@@ -13,5 +13,8 @@ dist/
 *.pem
 *.key
 
+shared/notes/*
+!shared/notes/.gitkeep
+
 platform/data/*.json
 !platform/data/.gitkeep
