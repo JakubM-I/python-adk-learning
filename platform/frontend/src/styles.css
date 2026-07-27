@@ -366,6 +366,20 @@ h3 {
   background: #e9f4f4;
 }
 
+.primary-action {
+  min-height: 36px;
+  border: 1px solid #2d8f64;
+  border-radius: 8px;
+  background: #2d8f64;
+  color: #ffffff;
+  font-weight: 800;
+  padding: 7px 12px;
+}
+
+.primary-action:hover {
+  background: #247650;
+}
+
 .notes-panel textarea {
   display: block;
   width: 100%;
@@ -469,6 +483,169 @@ h3 {
   padding: 0;
 }
 
+.exercise-mode {
+  display: grid;
+  gap: 16px;
+  max-width: 900px;
+  padding: 22px;
+}
+
+.exercise-toolbar,
+.answer-header,
+.exercise-actions {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.exercise-toolbar h4,
+.answer-header h4 {
+  margin: 4px 0 0;
+  color: #17202a;
+  font-size: 1.2rem;
+  line-height: 1.2;
+}
+
+.exercise-counter,
+.exercise-meta span,
+.exercise-status,
+.answer-header span {
+  display: inline-flex;
+  min-height: 28px;
+  align-items: center;
+  border-radius: 999px;
+  font-size: 0.82rem;
+  font-weight: 800;
+  padding: 4px 10px;
+}
+
+.exercise-counter {
+  background: #e8eef3;
+  color: #44576a;
+}
+
+.exercise-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.exercise-meta span {
+  border: 1px solid #d2dde7;
+  background: #f8fafc;
+  color: #526578;
+}
+
+.exercise-status {
+  white-space: nowrap;
+}
+
+.status-draft {
+  border: 1px solid #d2dde7;
+  background: #f8fafc;
+  color: #526578;
+}
+
+.status-review {
+  border: 1px solid #ead7a5;
+  background: #fff8df;
+  color: #7b5b12;
+}
+
+.status-solved {
+  border: 1px solid #b7d9c6;
+  background: #edf8f1;
+  color: #1d6b43;
+}
+
+.exercise-section,
+.answer-panel,
+.exercise-details {
+  border: 1px solid #dbe3ea;
+  border-radius: 8px;
+  background: #fbfcfe;
+  padding: 16px;
+}
+
+.exercise-section p:last-child {
+  margin-bottom: 0;
+}
+
+.exercise-section .markdown-reader,
+.exercise-details .markdown-reader {
+  max-width: none;
+  padding: 0;
+}
+
+.exercise-section .markdown-reader p,
+.exercise-details .markdown-reader p,
+.exercise-section .markdown-reader ul,
+.exercise-details .markdown-reader ul {
+  margin-bottom: 10px;
+}
+
+.exercise-section .markdown-reader p:last-child,
+.exercise-details .markdown-reader p:last-child,
+.exercise-section .markdown-reader ul:last-child,
+.exercise-details .markdown-reader ul:last-child {
+  margin-bottom: 0;
+}
+
+.exercise-details summary {
+  cursor: pointer;
+  color: #25495a;
+  font-weight: 800;
+}
+
+.exercise-details .markdown-reader {
+  margin-top: 14px;
+}
+
+.expected-effect {
+  background: #fffdf6;
+}
+
+.answer-panel {
+  display: grid;
+  gap: 12px;
+  background: #ffffff;
+}
+
+.answer-header span {
+  border: 1px solid #d2dde7;
+  background: #f8fafc;
+  color: #526578;
+  white-space: nowrap;
+}
+
+.answer-panel textarea {
+  display: block;
+  width: 100%;
+  min-height: 210px;
+  resize: vertical;
+  border: 1px solid #cbd8e3;
+  border-radius: 8px;
+  background: #fbfcfe;
+  color: #17202a;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  font-size: 0.94rem;
+  line-height: 1.6;
+  padding: 12px;
+}
+
+.answer-panel textarea:focus {
+  border-color: #176b87;
+  outline: 3px solid rgba(23, 107, 135, 0.14);
+}
+
+.status-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+}
+
 @media (max-width: 920px) {
   .app-shell {
     padding: 12px;
@@ -505,9 +682,22 @@ h3 {
 
   .topbar,
   .reader-header,
-  .notes-header {
+  .notes-header,
+  .exercise-toolbar,
+  .answer-header,
+  .exercise-actions {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .exercise-actions,
+  .status-actions {
+    width: 100%;
+  }
+
+  .exercise-actions > button,
+  .status-actions button {
+    width: 100%;
   }
 
   .reader-actions {

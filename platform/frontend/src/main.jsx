@@ -17,8 +17,15 @@ const EMPTY_MODULE_PROGRESS = {
   completed_parts: [],
   current_exercise: null,
   completed_exercises: [],
+  exercise_statuses: {},
   notes: "",
   answers: {},
+};
+
+const EXERCISE_STATUS_LABELS = {
+  draft: "W trakcie",
+  review: "Do sprawdzenia",
+  solved: "Rozwiazane",
 };
 
 function escapeHtml(value) {
@@ -185,14 +192,17 @@ function App() {
   const [selectedModuleId, setSelectedModuleId] = useState("");
   const [selectedPart, setSelectedPart] = useState("material");
   const [content, setContent] = useState(null);
+  const [exercises, setExercises] = useState([]);
   const [progress, setProgress] = useState(EMPTY_PROGRESS);
   const [notesDraft, setNotesDraft] = useState("");
   const [modulesError, setModulesError] = useState("");
   const [contentError, setContentError] = useState("");
+  const [exercisesError, setExercisesError] = useState("");
   const [progressError, setProgressError] = useState("");
   const [progressStatus, setProgressStatus] = useState("Wczytywanie postepu");
   const [isLoadingModules, setIsLoadingModules] = useState(true);
   const [isLoadingContent, setIsLoadingContent] = useState(false);
+  const [isLoadingExercises, setIsLoadingExercises] = useState(false);
 
   useEffect(() => {
     let isActive = true;
@@ -271,6 +281,13 @@ function App() {
     let isActive = true;
 
     async function loadContent() {
+      if (selectedPart === "exercises") {
+        setContent(null);
+        setContentError("");
+        setIsLoadingContent(false);
+        return;
+      }
+
       setIsLoadingContent(true);
 
       try {
@@ -305,10 +322,60 @@ function App() {
     };
   }, [selectedModuleId, selectedPart]);
 
+  useEffect(() => {
+    if (!selectedModuleId || selectedPart !== "exercises") {
+      setExercisesError("");
+      setIsLoadingExercises(false);
+      return;
+    }
+
+    let isActive = true;
+
+    async function loadExercises() {
+      setIsLoadingExercises(true);
+
+      try {
+        const response = await fetch(`${API_BASE_URL}/api/modules/${selectedModuleId}/exercises`);
+
+        if (!response.ok) {
+          throw new Error(`Backend odpowiedzial statusem ${response.status}`);
+        }
+
+        const payload = await response.json();
+
+        if (isActive) {
+          setExercises(payload.exercises ?? []);
+          setExercisesError("");
+        }
+      } catch (caughtError) {
+        if (isActive) {
+          setExercises([]);
+          setExercisesError(caughtError instanceof Error ? caughtError.message : "Nie udalo sie pobrac cwiczen.");
+        }
+      } finally {
+        if (isActive) {
+          setIsLoadingExercises(false);
+        }
+      }
+    }
+
+    loadExercises();
+
+    return () => {
+      isActive = false;
+    };
+  }, [selectedModuleId, selectedPart]);
+
   const selectedModule = modules.find((module) => module.id === selectedModuleId);
   const availableParts = selectedModule?.parts ?? [];
   const partMeta = MODULE_PARTS.find((part) => part.id === selectedPart);
   const selectedModuleProgress = getModuleProgress(progress, selectedModuleId);
+  const currentExerciseIndex = getCurrentExerciseIndex(exercises, selectedModuleProgress.current_exercise);
+  const currentExercise = exercises[currentExerciseIndex] ?? null;
+  const currentExerciseAnswer = currentExercise ? selectedModuleProgress.answers[currentExercise.id] ?? "" : "";
+  const currentExerciseStatus = currentExercise
+    ? selectedModuleProgress.exercise_statuses[currentExercise.id] ?? "draft"
+    : "draft";
   const completedAvailableParts = availableParts.filter((part) =>
     selectedModuleProgress.completed_parts.includes(part),
   );
@@ -402,6 +469,73 @@ function App() {
     saveProgress(nextProgress);
   }
 
+  function selectExercise(index) {
+    const exercise = exercises[index];
+
+    if (!selectedModuleId || !exercise) {
+      return;
+    }
+
+    const nextProgress = buildNextProgress(selectedModuleId, (currentModuleProgress) => ({
+      ...currentModuleProgress,
+      current_exercise: exercise.id,
+    }));
+
+    setProgress(nextProgress);
+    saveProgress(nextProgress);
+  }
+
+  function saveExerciseAnswer(answer) {
+    if (!selectedModuleId || !currentExercise) {
+      return;
+    }
+
+    const nextProgress = buildNextProgress(selectedModuleId, (currentModuleProgress) => ({
+      ...currentModuleProgress,
+      current_exercise: currentExercise.id,
+      answers: {
+        ...currentModuleProgress.answers,
+        [currentExercise.id]: answer,
+      },
+      exercise_statuses: {
+        ...currentModuleProgress.exercise_statuses,
+        [currentExercise.id]: currentModuleProgress.exercise_statuses[currentExercise.id] ?? "draft",
+      },
+    }));
+
+    setProgress(nextProgress);
+    saveProgress(nextProgress);
+  }
+
+  function setExerciseStatus(status) {
+    if (!selectedModuleId || !currentExercise) {
+      return;
+    }
+
+    const nextProgress = buildNextProgress(selectedModuleId, (currentModuleProgress) => {
+      const completedExercises = new Set(currentModuleProgress.completed_exercises);
+
+      if (status === "solved") {
+        completedExercises.add(currentExercise.id);
+      } else {
+        completedExercises.delete(currentExercise.id);
+      }
+
+      return {
+        ...currentModuleProgress,
+        current_exercise: currentExercise.id,
+        completed_exercises: Array.from(completedExercises),
+        exercise_statuses: {
+          ...currentModuleProgress.exercise_statuses,
+          [currentExercise.id]: status,
+        },
+      };
+    });
+
+    setProgress(nextProgress);
+    saveProgress(nextProgress);
+  }
+
   return (
     <main className="app-shell">
       <section className="workspace">
@@ -440,11 +574,15 @@ function App() {
         <section className="content-panel">
           <header className="topbar">
             <div>
-              <p className="eyebrow">Etap 3</p>
+              <p className="eyebrow">Etap 4</p>
               <h2>{selectedModule?.title ?? "Wybierz modul"}</h2>
             </div>
-            <span className={modulesError || contentError || progressError ? "status-pill status-error" : "status-pill"}>
-              {modulesError || contentError || progressError ? "Wymaga uwagi" : progressStatus}
+            <span
+              className={
+                modulesError || contentError || exercisesError || progressError ? "status-pill status-error" : "status-pill"
+              }
+            >
+              {modulesError || contentError || exercisesError || progressError ? "Wymaga uwagi" : progressStatus}
             </span>
           </header>
 
@@ -476,10 +614,10 @@ function App() {
                 ))}
               </nav>
 
-              <section className="reader-shell" aria-busy={isLoadingContent}>
+              <section className="reader-shell" aria-busy={isLoadingContent || isLoadingExercises}>
                 <div className="reader-header">
                   <div>
-                    <p className="eyebrow">Plik Markdown</p>
+                    <p className="eyebrow">{selectedPart === "exercises" ? "Tryb cwiczen" : "Plik Markdown"}</p>
                     <h3>{partMeta?.label ?? selectedPart}</h3>
                   </div>
                   <div className="reader-actions">
@@ -495,9 +633,27 @@ function App() {
                   </div>
                 </div>
 
-                {isLoadingContent ? <p className="empty-state">Wczytuje tresc modulu...</p> : null}
+                {isLoadingContent || isLoadingExercises ? <p className="empty-state">Wczytuje tresc modulu...</p> : null}
                 {contentError ? <p className="empty-state error-text">{contentError}</p> : null}
-                {!isLoadingContent && content?.markdown ? <MarkdownReader markdown={content.markdown} /> : null}
+                {exercisesError ? <p className="empty-state error-text">{exercisesError}</p> : null}
+                {!isLoadingContent && selectedPart !== "exercises" && content?.markdown ? (
+                  <MarkdownReader markdown={content.markdown} />
+                ) : null}
+                {!isLoadingExercises && selectedPart === "exercises" && currentExercise ? (
+                  <ExerciseMode
+                    answer={currentExerciseAnswer}
+                    currentIndex={currentExerciseIndex}
+                    exercise={currentExercise}
+                    exerciseCount={exercises.length}
+                    onAnswerBlur={saveExerciseAnswer}
+                    onNavigate={selectExercise}
+                    onStatusChange={setExerciseStatus}
+                    status={currentExerciseStatus}
+                  />
+                ) : null}
+                {!isLoadingExercises && selectedPart === "exercises" && !currentExercise && !exercisesError ? (
+                  <p className="empty-state">Ten modul nie ma jeszcze sparsowanych cwiczen.</p>
+                ) : null}
               </section>
 
               <section className="notes-panel" aria-label="Prywatne notatki">
@@ -533,6 +689,107 @@ function App() {
   );
 }
 
+function ExerciseMode({
+  answer,
+  currentIndex,
+  exercise,
+  exerciseCount,
+  onAnswerBlur,
+  onNavigate,
+  onStatusChange,
+  status,
+}) {
+  const [answerDraft, setAnswerDraft] = useState(answer);
+
+  useEffect(() => {
+    setAnswerDraft(answer);
+  }, [answer, exercise.id]);
+
+  const canGoPrevious = currentIndex > 0;
+  const canGoNext = currentIndex < exerciseCount - 1;
+
+  return (
+    <article className="exercise-mode">
+      <div className="exercise-toolbar">
+        <div>
+          <span className="exercise-counter">
+            Cwiczenie {currentIndex + 1} / {exerciseCount}
+          </span>
+          <h4>{exercise.title}</h4>
+        </div>
+        <span className={`exercise-status status-${status}`}>{EXERCISE_STATUS_LABELS[status] ?? status}</span>
+      </div>
+
+      <div className="exercise-meta">
+        <span>{exercise.level_label}</span>
+        <span>{exercise.id}</span>
+      </div>
+
+      {exercise.goal ? (
+        <section className="exercise-section">
+          <p className="eyebrow">Cel</p>
+          <p>{exercise.goal}</p>
+        </section>
+      ) : null}
+
+      <section className="exercise-section">
+        <p className="eyebrow">Opis</p>
+        <MarkdownReader markdown={exercise.description_markdown} />
+      </section>
+
+      {exercise.constraints_markdown ? (
+        <details className="exercise-details">
+          <summary>Ograniczenia i wskazowki</summary>
+          <MarkdownReader markdown={exercise.constraints_markdown} />
+        </details>
+      ) : null}
+
+      <section className="answer-panel">
+        <div className="answer-header">
+          <div>
+            <p className="eyebrow">Twoja odpowiedz</p>
+            <h4>Kod, opis rozumowania albo oba</h4>
+          </div>
+          <span>{answerDraft.trim() ? "Gotowe do zapisu" : "Puste"}</span>
+        </div>
+        <textarea
+          aria-label="Odpowiedz do cwiczenia"
+          onBlur={() => onAnswerBlur(answerDraft)}
+          onChange={(event) => setAnswerDraft(event.target.value)}
+          placeholder="Wpisz rozwiazanie. Zostanie zapisane lokalnie po opuszczeniu pola."
+          spellCheck="false"
+          value={answerDraft}
+        />
+      </section>
+
+      <details className="exercise-details expected-effect">
+        <summary>Pokaz oczekiwany efekt</summary>
+        <MarkdownReader markdown={exercise.expected_effect_markdown || "Brak osobnej sekcji oczekiwanego efektu."} />
+      </details>
+
+      <div className="exercise-actions">
+        <button className="secondary-action" disabled={!canGoPrevious} onClick={() => onNavigate(currentIndex - 1)} type="button">
+          Poprzednie
+        </button>
+        <div className="status-actions" aria-label="Status cwiczenia">
+          <button className="secondary-action" onClick={() => onStatusChange("draft")} type="button">
+            W trakcie
+          </button>
+          <button className="secondary-action" onClick={() => onStatusChange("review")} type="button">
+            Do sprawdzenia
+          </button>
+          <button className="primary-action" onClick={() => onStatusChange("solved")} type="button">
+            Rozwiazane
+          </button>
+        </div>
+        <button className="secondary-action" disabled={!canGoNext} onClick={() => onNavigate(currentIndex + 1)} type="button">
+          Nastepne
+        </button>
+      </div>
+    </article>
+  );
+}
+
 function getModuleProgress(progress, moduleId) {
   if (!moduleId) {
     return EMPTY_MODULE_PROGRESS;
@@ -542,6 +799,16 @@ function getModuleProgress(progress, moduleId) {
     ...EMPTY_MODULE_PROGRESS,
     ...(progress.modules?.[moduleId] ?? {}),
   };
+}
+
+function getCurrentExerciseIndex(exercises, currentExerciseId) {
+  if (exercises.length === 0) {
+    return -1;
+  }
+
+  const currentIndex = exercises.findIndex((exercise) => exercise.id === currentExerciseId);
+
+  return currentIndex >= 0 ? currentIndex : 0;
 }
 
 function getModuleCompletionLabel(module, progress) {

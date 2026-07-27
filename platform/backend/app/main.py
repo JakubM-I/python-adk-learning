@@ -29,6 +29,7 @@ class ModuleProgress(BaseModel):
     completed_parts: list[str] = Field(default_factory=list)
     current_exercise: str | None = None
     completed_exercises: list[str] = Field(default_factory=list)
+    exercise_statuses: dict[str, str] = Field(default_factory=dict)
     notes: str = ""
     answers: dict[str, str] = Field(default_factory=dict)
 
@@ -76,6 +77,152 @@ def extract_title(markdown: str, fallback: str) -> str:
             return stripped.removeprefix("# ").strip()
 
     return fallback
+
+
+def slugify_heading(value: str) -> str:
+    return (
+        value.lower()
+        .replace("ą", "a")
+        .replace("ć", "c")
+        .replace("ę", "e")
+        .replace("ł", "l")
+        .replace("ń", "n")
+        .replace("ó", "o")
+        .replace("ś", "s")
+        .replace("ź", "z")
+        .replace("ż", "z")
+    )
+
+
+def normalize_exercise_level(heading: str) -> str:
+    normalized = slugify_heading(heading)
+
+    if "rozgrzew" in normalized:
+        return "warmup"
+
+    if "sred" in normalized:
+        return "medium"
+
+    if "prakty" in normalized:
+        return "practical"
+
+    return "general"
+
+
+def level_label(level: str) -> str:
+    labels = {
+        "warmup": "Rozgrzewka",
+        "medium": "Srednie",
+        "practical": "Praktyczne",
+        "general": "Ogolne",
+    }
+
+    return labels.get(level, "Ogolne")
+
+
+def split_exercise_sections(markdown: str) -> dict[str, str]:
+    section_aliases = {
+        "cel": "goal",
+        "opis": "description_markdown",
+        "ograniczenia / wskazowki": "constraints_markdown",
+        "ograniczenia": "constraints_markdown",
+        "wskazowki": "constraints_markdown",
+        "oczekiwany efekt": "expected_effect_markdown",
+    }
+    sections = {
+        "goal": "",
+        "description_markdown": "",
+        "constraints_markdown": "",
+        "expected_effect_markdown": "",
+    }
+    current_section: str | None = None
+    current_lines: list[str] = []
+
+    def flush_section() -> None:
+        if current_section is not None:
+            sections[current_section] = "\n".join(current_lines).strip()
+
+    for line in markdown.splitlines():
+        stripped = line.strip()
+        section_name = stripped.removesuffix(":")
+        inline_value = ""
+
+        if ":" in stripped:
+            possible_name, possible_value = stripped.split(":", maxsplit=1)
+            section_name = possible_name
+            inline_value = possible_value.strip()
+
+        section_key = section_aliases.get(slugify_heading(section_name))
+
+        if section_key is not None:
+            flush_section()
+            current_section = section_key
+            current_lines = [inline_value] if inline_value else []
+            continue
+
+        if current_section is None:
+            current_section = "description_markdown"
+
+        current_lines.append(line)
+
+    flush_section()
+
+    return sections
+
+
+def parse_exercises_markdown(markdown: str) -> list[dict[str, str | int]]:
+    exercises: list[dict[str, str | int]] = []
+    current_level = "general"
+    current_level_label = level_label(current_level)
+    current_exercise: dict[str, Any] | None = None
+    current_lines: list[str] = []
+
+    def flush_exercise() -> None:
+        if current_exercise is None:
+            return
+
+        sections = split_exercise_sections("\n".join(current_lines).strip())
+        exercises.append({**current_exercise, **sections})
+
+    for line in markdown.splitlines():
+        if line.startswith("## ") and not line.startswith("### "):
+            flush_exercise()
+            current_exercise = None
+            current_lines = []
+            current_level_label = line.removeprefix("## ").strip()
+            current_level = normalize_exercise_level(current_level_label)
+            continue
+
+        if line.startswith("### Ćwiczenie ") or line.startswith("### Cwiczenie "):
+            flush_exercise()
+            heading = line.removeprefix("### ").strip()
+            title = heading
+            exercise_number = len(exercises) + 1
+
+            if ":" in heading:
+                number_part, title_part = heading.split(":", maxsplit=1)
+                title = title_part.strip()
+                digits = "".join(character for character in number_part if character.isdigit())
+
+                if digits:
+                    exercise_number = int(digits)
+
+            current_exercise = {
+                "id": f"exercise-{exercise_number}",
+                "number": exercise_number,
+                "title": title,
+                "level": current_level,
+                "level_label": current_level_label,
+            }
+            current_lines = []
+            continue
+
+        if current_exercise is not None:
+            current_lines.append(line)
+
+    flush_exercise()
+
+    return exercises
 
 
 def module_path_for(module_id: str) -> Path:
@@ -200,6 +347,19 @@ def get_module_content(module_id: str, part: str) -> dict[str, str]:
         "part": normalized_part,
         "filename": filename,
         "markdown": markdown,
+    }
+
+
+@app.get("/api/modules/{module_id}/exercises")
+def get_module_exercises(module_id: str) -> dict[str, str | list[dict[str, str | int]]]:
+    module_path = module_path_for(module_id)
+    filename = MODULE_PART_FILES["exercises"]
+    markdown = read_markdown_file(module_path / filename)
+
+    return {
+        "module_id": module_id,
+        "filename": filename,
+        "exercises": parse_exercises_markdown(markdown),
     }
 
 
