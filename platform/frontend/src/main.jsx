@@ -21,6 +21,8 @@ const EMPTY_MODULE_PROGRESS = {
   exercise_statuses: {},
   knowledge_check_statuses: {},
   notes: "",
+  part_answers: {},
+  mini_project_submission: "",
   answers: {},
   knowledge_check_answers: {},
   exercise_feedback: {},
@@ -445,6 +447,8 @@ function App() {
   const currentKnowledgeCheckAnswer = currentKnowledgeCheckItem
     ? selectedModuleProgress.knowledge_check_answers[currentKnowledgeCheckItem.id] ?? ""
     : "";
+  const currentPartAnswer = selectedModuleProgress.part_answers[selectedPart] ?? "";
+  const currentMiniProjectSubmission = selectedModuleProgress.mini_project_submission ?? "";
   const currentExerciseFeedback = currentExercise
     ? selectedModuleProgress.exercise_feedback[currentExercise.id] ?? ""
     : "";
@@ -661,6 +665,37 @@ function App() {
         [currentKnowledgeCheckItem.id]:
           currentModuleProgress.knowledge_check_statuses[currentKnowledgeCheckItem.id] ?? "draft",
       },
+    }));
+
+    setProgress(nextProgress);
+    return saveProgress(nextProgress);
+  }
+
+  function savePartAnswer(partId, answer) {
+    if (!selectedModuleId) {
+      return Promise.resolve(null);
+    }
+
+    const nextProgress = buildNextProgress(selectedModuleId, (currentModuleProgress) => ({
+      ...currentModuleProgress,
+      part_answers: {
+        ...currentModuleProgress.part_answers,
+        [partId]: answer,
+      },
+    }));
+
+    setProgress(nextProgress);
+    return saveProgress(nextProgress);
+  }
+
+  function saveMiniProjectSubmission(submission) {
+    if (!selectedModuleId) {
+      return Promise.resolve(null);
+    }
+
+    const nextProgress = buildNextProgress(selectedModuleId, (currentModuleProgress) => ({
+      ...currentModuleProgress,
+      mini_project_submission: submission,
     }));
 
     setProgress(nextProgress);
@@ -892,7 +927,18 @@ function App() {
                 selectedPart !== "exercises" &&
                 selectedPart !== "knowledge_check" &&
                 content?.markdown ? (
-                  <MarkdownReader markdown={content.markdown} />
+                  <>
+                    <MarkdownReader markdown={content.markdown} />
+                    {selectedPart === "material" || selectedPart === "mini_project" ? (
+                      <PartWorkspacePanel
+                        partId={selectedPart}
+                        answer={currentPartAnswer}
+                        miniProjectSubmission={currentMiniProjectSubmission}
+                        onAnswerBlur={savePartAnswer}
+                        onSubmissionBlur={saveMiniProjectSubmission}
+                      />
+                    ) : null}
+                  </>
                 ) : null}
                 {!isLoadingExercises && selectedPart === "exercises" && currentExercise ? (
                   <ExerciseMode
@@ -974,6 +1020,63 @@ function App() {
         </section>
       </section>
     </main>
+  );
+}
+
+function PartWorkspacePanel({
+  answer,
+  miniProjectSubmission,
+  onAnswerBlur,
+  onSubmissionBlur,
+  partId,
+}) {
+  const [answerDraft, setAnswerDraft] = useState(answer);
+  const [submissionDraft, setSubmissionDraft] = useState(miniProjectSubmission);
+  const isMiniProject = partId === "mini_project";
+
+  useEffect(() => {
+    setAnswerDraft(answer);
+  }, [answer, partId]);
+
+  useEffect(() => {
+    setSubmissionDraft(miniProjectSubmission);
+  }, [miniProjectSubmission, partId]);
+
+  return (
+    <section className="part-workspace" aria-label="Miejsce na odpowiedz">
+      <div className="part-workspace-header">
+        <div>
+          <p className="eyebrow">Aktywna praca</p>
+          <h4>{isMiniProject ? "Mini-projekt i pytanie sprawdzajace" : "Pytanie sprawdzajace"}</h4>
+        </div>
+        <span>{answerDraft.trim() || submissionDraft.trim() ? "Gotowe do zapisu" : "Puste"}</span>
+      </div>
+
+      {isMiniProject ? (
+        <label className="workspace-field workspace-field-submission">
+          <span>Rozwiazanie mini-projektu do sprawdzenia</span>
+          <textarea
+            aria-label="Rozwiazanie mini-projektu do sprawdzenia"
+            onBlur={() => onSubmissionBlur(submissionDraft)}
+            onChange={(event) => setSubmissionDraft(event.target.value)}
+            placeholder="Wklej kod, opis decyzji albo link/sciezke do pliku z rozwiazaniem. Zapis nastapi po opuszczeniu pola."
+            spellCheck="false"
+            value={submissionDraft}
+          />
+        </label>
+      ) : null}
+
+      <label className="workspace-field workspace-field-answer">
+        <span>Odpowiedz na pytanie sprawdzajace</span>
+        <textarea
+          aria-label="Odpowiedz na pytanie sprawdzajace"
+          onBlur={() => onAnswerBlur(partId, answerDraft)}
+          onChange={(event) => setAnswerDraft(event.target.value)}
+          placeholder="Zapisz swoja odpowiedz. Platforma przechowa ja lokalnie w postepie modulu."
+          value={answerDraft}
+        />
+      </label>
+    </section>
   );
 }
 

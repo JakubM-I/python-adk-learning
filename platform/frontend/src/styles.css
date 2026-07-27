@@ -483,6 +483,80 @@ h3 {
   padding: 0;
 }
 
+.part-workspace {
+  display: grid;
+  gap: 14px;
+  margin: 4px 28px 28px;
+  max-width: 860px;
+  border: 1px solid #dbe3ea;
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 18px;
+}
+
+.part-workspace-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.part-workspace-header h4 {
+  margin: 4px 0 0;
+  color: #17202a;
+  font-size: 1.15rem;
+  line-height: 1.2;
+}
+
+.part-workspace-header span {
+  display: inline-flex;
+  min-height: 28px;
+  align-items: center;
+  border: 1px solid #d2dde7;
+  border-radius: 999px;
+  background: #f8fafc;
+  color: #526578;
+  font-size: 0.82rem;
+  font-weight: 800;
+  padding: 4px 10px;
+  white-space: nowrap;
+}
+
+.workspace-field {
+  display: grid;
+  gap: 8px;
+}
+
+.workspace-field span {
+  color: #2f4050;
+  font-weight: 800;
+}
+
+.workspace-field textarea {
+  display: block;
+  width: 100%;
+  min-height: 150px;
+  resize: vertical;
+  border: 1px solid #cbd8e3;
+  border-radius: 8px;
+  background: #fbfcfe;
+  color: #17202a;
+  line-height: 1.55;
+  padding: 12px;
+}
+
+.workspace-field-submission textarea {
+  min-height: 260px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  font-size: 0.94rem;
+  line-height: 1.6;
+}
+
+.workspace-field textarea:focus {
+  border-color: #176b87;
+  outline: 3px solid rgba(23, 107, 135, 0.14);
+}
+
 .exercise-mode {
   display: grid;
   gap: 16px;
@@ -815,5 +889,9 @@ h3 {
 
   .markdown-reader {
     padding: 8px 18px 28px;
+  }
+
+  .part-workspace {
+    margin: 0 18px 24px;
   }
 }

@@ -33,6 +33,8 @@ class ModuleProgress(BaseModel):
     exercise_statuses: dict[str, str] = Field(default_factory=dict)
     knowledge_check_statuses: dict[str, str] = Field(default_factory=dict)
     notes: str = ""
+    part_answers: dict[str, str] = Field(default_factory=dict)
+    mini_project_submission: str = ""
     answers: dict[str, str] = Field(default_factory=dict)
     knowledge_check_answers: dict[str, str] = Field(default_factory=dict)
     exercise_feedback: dict[str, str] = Field(default_factory=dict)

@@ -21,6 +21,8 @@ Etap 6 zawiera:
 - endpointy przygotowania paczki kontekstu dla agenta,
 - panel agentowy w trybie cwiczen i sprawdzenia wiedzy,
 - zapis feedbacku agenta przy konkretnej odpowiedzi.
+- pole odpowiedzi na pytanie sprawdzajace w Materiale,
+- pole odpowiedzi na pytanie sprawdzajace i miejsce na rozwiazanie w Mini-projekcie.
 
 ## Backend
 
@@ -135,6 +137,8 @@ Ten etap zawiera czytnik modulow z lokalnym postepem, trybem cwiczen, trybem spr
 - przygotowanie paczki `agent-context` dla wybranego cwiczenia albo pytania,
 - rozdzielenie tresci zadania, odpowiedzi uzytkownika, oczekiwanego efektu i feedbacku,
 - zapis feedbacku w `exercise_feedback` albo `knowledge_check_feedback` w lokalnym `platform/data/progress.json`.
+- zapis odpowiedzi z konca Materialu i Mini-projektu w `part_answers`,
+- zapis rozwiazania Mini-projektu do sprawdzenia w `mini_project_submission`.
 
 Ten etap celowo nie zawiera jeszcze:
 - uruchamiania kodu Pythona,
