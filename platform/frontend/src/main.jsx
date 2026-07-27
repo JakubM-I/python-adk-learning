@@ -16,16 +16,25 @@ const EMPTY_PROGRESS = { modules: {} };
 const EMPTY_MODULE_PROGRESS = {
   completed_parts: [],
   current_exercise: null,
+  current_knowledge_check: null,
   completed_exercises: [],
   exercise_statuses: {},
+  knowledge_check_statuses: {},
   notes: "",
   answers: {},
+  knowledge_check_answers: {},
 };
 
 const EXERCISE_STATUS_LABELS = {
   draft: "W trakcie",
   review: "Do sprawdzenia",
   solved: "Rozwiazane",
+};
+
+const KNOWLEDGE_CHECK_STATUS_LABELS = {
+  draft: "W trakcie",
+  review: "Do omowienia",
+  done: "Przerobione",
 };
 
 function escapeHtml(value) {
@@ -193,16 +202,19 @@ function App() {
   const [selectedPart, setSelectedPart] = useState("material");
   const [content, setContent] = useState(null);
   const [exercises, setExercises] = useState([]);
+  const [knowledgeCheckItems, setKnowledgeCheckItems] = useState([]);
   const [progress, setProgress] = useState(EMPTY_PROGRESS);
   const [notesDraft, setNotesDraft] = useState("");
   const [modulesError, setModulesError] = useState("");
   const [contentError, setContentError] = useState("");
   const [exercisesError, setExercisesError] = useState("");
+  const [knowledgeCheckError, setKnowledgeCheckError] = useState("");
   const [progressError, setProgressError] = useState("");
   const [progressStatus, setProgressStatus] = useState("Wczytywanie postepu");
   const [isLoadingModules, setIsLoadingModules] = useState(true);
   const [isLoadingContent, setIsLoadingContent] = useState(false);
   const [isLoadingExercises, setIsLoadingExercises] = useState(false);
+  const [isLoadingKnowledgeCheck, setIsLoadingKnowledgeCheck] = useState(false);
 
   useEffect(() => {
     let isActive = true;
@@ -281,7 +293,7 @@ function App() {
     let isActive = true;
 
     async function loadContent() {
-      if (selectedPart === "exercises") {
+      if (selectedPart === "exercises" || selectedPart === "knowledge_check") {
         setContent(null);
         setContentError("");
         setIsLoadingContent(false);
@@ -316,6 +328,52 @@ function App() {
     }
 
     loadContent();
+
+    return () => {
+      isActive = false;
+    };
+  }, [selectedModuleId, selectedPart]);
+
+  useEffect(() => {
+    if (!selectedModuleId || selectedPart !== "knowledge_check") {
+      setKnowledgeCheckError("");
+      setIsLoadingKnowledgeCheck(false);
+      return;
+    }
+
+    let isActive = true;
+
+    async function loadKnowledgeCheck() {
+      setIsLoadingKnowledgeCheck(true);
+
+      try {
+        const response = await fetch(`${API_BASE_URL}/api/modules/${selectedModuleId}/knowledge-check`);
+
+        if (!response.ok) {
+          throw new Error(`Backend odpowiedzial statusem ${response.status}`);
+        }
+
+        const payload = await response.json();
+
+        if (isActive) {
+          setKnowledgeCheckItems(payload.items ?? []);
+          setKnowledgeCheckError("");
+        }
+      } catch (caughtError) {
+        if (isActive) {
+          setKnowledgeCheckItems([]);
+          setKnowledgeCheckError(
+            caughtError instanceof Error ? caughtError.message : "Nie udalo sie pobrac sprawdzenia wiedzy.",
+          );
+        }
+      } finally {
+        if (isActive) {
+          setIsLoadingKnowledgeCheck(false);
+        }
+      }
+    }
+
+    loadKnowledgeCheck();
 
     return () => {
       isActive = false;
@@ -372,10 +430,24 @@ function App() {
   const selectedModuleProgress = getModuleProgress(progress, selectedModuleId);
   const currentExerciseIndex = getCurrentExerciseIndex(exercises, selectedModuleProgress.current_exercise);
   const currentExercise = exercises[currentExerciseIndex] ?? null;
+  const currentKnowledgeCheckIndex = getCurrentKnowledgeCheckIndex(
+    knowledgeCheckItems,
+    selectedModuleProgress.current_knowledge_check,
+  );
+  const currentKnowledgeCheckItem = knowledgeCheckItems[currentKnowledgeCheckIndex] ?? null;
   const currentExerciseAnswer = currentExercise ? selectedModuleProgress.answers[currentExercise.id] ?? "" : "";
+  const currentKnowledgeCheckAnswer = currentKnowledgeCheckItem
+    ? selectedModuleProgress.knowledge_check_answers[currentKnowledgeCheckItem.id] ?? ""
+    : "";
   const currentExerciseStatus = currentExercise
     ? selectedModuleProgress.exercise_statuses[currentExercise.id] ?? "draft"
     : "draft";
+  const currentKnowledgeCheckStatus = currentKnowledgeCheckItem
+    ? selectedModuleProgress.knowledge_check_statuses[currentKnowledgeCheckItem.id] ?? "draft"
+    : "draft";
+  const completedKnowledgeCheckCount = knowledgeCheckItems.filter(
+    (item) => selectedModuleProgress.knowledge_check_statuses[item.id] === "done",
+  ).length;
   const completedAvailableParts = availableParts.filter((part) =>
     selectedModuleProgress.completed_parts.includes(part),
   );
@@ -536,6 +608,63 @@ function App() {
     saveProgress(nextProgress);
   }
 
+  function selectKnowledgeCheckItem(index) {
+    const item = knowledgeCheckItems[index];
+
+    if (!selectedModuleId || !item) {
+      return;
+    }
+
+    const nextProgress = buildNextProgress(selectedModuleId, (currentModuleProgress) => ({
+      ...currentModuleProgress,
+      current_knowledge_check: item.id,
+    }));
+
+    setProgress(nextProgress);
+    saveProgress(nextProgress);
+  }
+
+  function saveKnowledgeCheckAnswer(answer) {
+    if (!selectedModuleId || !currentKnowledgeCheckItem) {
+      return;
+    }
+
+    const nextProgress = buildNextProgress(selectedModuleId, (currentModuleProgress) => ({
+      ...currentModuleProgress,
+      current_knowledge_check: currentKnowledgeCheckItem.id,
+      knowledge_check_answers: {
+        ...currentModuleProgress.knowledge_check_answers,
+        [currentKnowledgeCheckItem.id]: answer,
+      },
+      knowledge_check_statuses: {
+        ...currentModuleProgress.knowledge_check_statuses,
+        [currentKnowledgeCheckItem.id]:
+          currentModuleProgress.knowledge_check_statuses[currentKnowledgeCheckItem.id] ?? "draft",
+      },
+    }));
+
+    setProgress(nextProgress);
+    saveProgress(nextProgress);
+  }
+
+  function setKnowledgeCheckStatus(status) {
+    if (!selectedModuleId || !currentKnowledgeCheckItem) {
+      return;
+    }
+
+    const nextProgress = buildNextProgress(selectedModuleId, (currentModuleProgress) => ({
+      ...currentModuleProgress,
+      current_knowledge_check: currentKnowledgeCheckItem.id,
+      knowledge_check_statuses: {
+        ...currentModuleProgress.knowledge_check_statuses,
+        [currentKnowledgeCheckItem.id]: status,
+      },
+    }));
+
+    setProgress(nextProgress);
+    saveProgress(nextProgress);
+  }
+
   return (
     <main className="app-shell">
       <section className="workspace">
@@ -574,15 +703,19 @@ function App() {
         <section className="content-panel">
           <header className="topbar">
             <div>
-              <p className="eyebrow">Etap 4</p>
+              <p className="eyebrow">Etap 5</p>
               <h2>{selectedModule?.title ?? "Wybierz modul"}</h2>
             </div>
             <span
               className={
-                modulesError || contentError || exercisesError || progressError ? "status-pill status-error" : "status-pill"
+                modulesError || contentError || exercisesError || knowledgeCheckError || progressError
+                  ? "status-pill status-error"
+                  : "status-pill"
               }
             >
-              {modulesError || contentError || exercisesError || progressError ? "Wymaga uwagi" : progressStatus}
+              {modulesError || contentError || exercisesError || knowledgeCheckError || progressError
+                ? "Wymaga uwagi"
+                : progressStatus}
             </span>
           </header>
 
@@ -614,10 +747,19 @@ function App() {
                 ))}
               </nav>
 
-              <section className="reader-shell" aria-busy={isLoadingContent || isLoadingExercises}>
+              <section
+                className="reader-shell"
+                aria-busy={isLoadingContent || isLoadingExercises || isLoadingKnowledgeCheck}
+              >
                 <div className="reader-header">
                   <div>
-                    <p className="eyebrow">{selectedPart === "exercises" ? "Tryb cwiczen" : "Plik Markdown"}</p>
+                    <p className="eyebrow">
+                      {selectedPart === "exercises"
+                        ? "Tryb cwiczen"
+                        : selectedPart === "knowledge_check"
+                          ? "Tryb sprawdzenia"
+                          : "Plik Markdown"}
+                    </p>
                     <h3>{partMeta?.label ?? selectedPart}</h3>
                   </div>
                   <div className="reader-actions">
@@ -633,10 +775,16 @@ function App() {
                   </div>
                 </div>
 
-                {isLoadingContent || isLoadingExercises ? <p className="empty-state">Wczytuje tresc modulu...</p> : null}
+                {isLoadingContent || isLoadingExercises || isLoadingKnowledgeCheck ? (
+                  <p className="empty-state">Wczytuje tresc modulu...</p>
+                ) : null}
                 {contentError ? <p className="empty-state error-text">{contentError}</p> : null}
                 {exercisesError ? <p className="empty-state error-text">{exercisesError}</p> : null}
-                {!isLoadingContent && selectedPart !== "exercises" && content?.markdown ? (
+                {knowledgeCheckError ? <p className="empty-state error-text">{knowledgeCheckError}</p> : null}
+                {!isLoadingContent &&
+                selectedPart !== "exercises" &&
+                selectedPart !== "knowledge_check" &&
+                content?.markdown ? (
                   <MarkdownReader markdown={content.markdown} />
                 ) : null}
                 {!isLoadingExercises && selectedPart === "exercises" && currentExercise ? (
@@ -653,6 +801,25 @@ function App() {
                 ) : null}
                 {!isLoadingExercises && selectedPart === "exercises" && !currentExercise && !exercisesError ? (
                   <p className="empty-state">Ten modul nie ma jeszcze sparsowanych cwiczen.</p>
+                ) : null}
+                {!isLoadingKnowledgeCheck && selectedPart === "knowledge_check" && currentKnowledgeCheckItem ? (
+                  <KnowledgeCheckMode
+                    answer={currentKnowledgeCheckAnswer}
+                    completedCount={completedKnowledgeCheckCount}
+                    currentIndex={currentKnowledgeCheckIndex}
+                    item={currentKnowledgeCheckItem}
+                    itemCount={knowledgeCheckItems.length}
+                    onAnswerBlur={saveKnowledgeCheckAnswer}
+                    onNavigate={selectKnowledgeCheckItem}
+                    onStatusChange={setKnowledgeCheckStatus}
+                    status={currentKnowledgeCheckStatus}
+                  />
+                ) : null}
+                {!isLoadingKnowledgeCheck &&
+                selectedPart === "knowledge_check" &&
+                !currentKnowledgeCheckItem &&
+                !knowledgeCheckError ? (
+                  <p className="empty-state">Ten modul nie ma jeszcze sparsowanych pytan sprawdzenia wiedzy.</p>
                 ) : null}
               </section>
 
@@ -790,6 +957,92 @@ function ExerciseMode({
   );
 }
 
+function KnowledgeCheckMode({
+  answer,
+  completedCount,
+  currentIndex,
+  item,
+  itemCount,
+  onAnswerBlur,
+  onNavigate,
+  onStatusChange,
+  status,
+}) {
+  const [answerDraft, setAnswerDraft] = useState(answer);
+
+  useEffect(() => {
+    setAnswerDraft(answer);
+  }, [answer, item.id]);
+
+  const canGoPrevious = currentIndex > 0;
+  const canGoNext = currentIndex < itemCount - 1;
+
+  return (
+    <article className="exercise-mode knowledge-check-mode">
+      <div className="exercise-toolbar">
+        <div>
+          <span className="exercise-counter">
+            Pytanie {currentIndex + 1} / {itemCount}
+          </span>
+          <h4>{item.category_label}</h4>
+        </div>
+        <span className={`exercise-status status-${status}`}>
+          {KNOWLEDGE_CHECK_STATUS_LABELS[status] ?? status}
+        </span>
+      </div>
+
+      <div className="exercise-meta">
+        <span>{item.category}</span>
+        <span>{item.id}</span>
+        <span>{completedCount} przerobione</span>
+      </div>
+
+      <section className="exercise-section knowledge-prompt">
+        <p className="eyebrow">Pytanie lub scenariusz</p>
+        <MarkdownReader markdown={item.prompt_markdown} />
+      </section>
+
+      <section className="answer-panel">
+        <div className="answer-header">
+          <div>
+            <p className="eyebrow">Twoja odpowiedz</p>
+            <h4>Wyjasnij wlasnymi slowami</h4>
+          </div>
+          <span>{answerDraft.trim() ? "Gotowe do zapisu" : "Puste"}</span>
+        </div>
+        <textarea
+          aria-label="Odpowiedz do pytania sprawdzenia wiedzy"
+          onBlur={() => onAnswerBlur(answerDraft)}
+          onChange={(event) => setAnswerDraft(event.target.value)}
+          placeholder="Odpowiedz tak, jakbys tlumaczyl ten temat drugiej osobie. Zapis nastapi po opuszczeniu pola."
+          spellCheck="false"
+          value={answerDraft}
+        />
+      </section>
+
+      <div className="exercise-actions">
+        <button className="secondary-action" disabled={!canGoPrevious} onClick={() => onNavigate(currentIndex - 1)} type="button">
+          Poprzednie
+        </button>
+        <div className="status-actions" aria-label="Status pytania">
+          <button className="secondary-action" onClick={() => onStatusChange("draft")} type="button">
+            W trakcie
+          </button>
+          <button className="secondary-action" onClick={() => onStatusChange("review")} type="button">
+            Do omowienia
+          </button>
+          <button className="primary-action" onClick={() => onStatusChange("done")} type="button">
+            Przerobione
+          </button>
+        </div>
+        <button className="secondary-action" disabled={!canGoNext} onClick={() => onNavigate(currentIndex + 1)} type="button">
+          Nastepne
+        </button>
+      </div>
+    </article>
+  );
+}
+
 function getModuleProgress(progress, moduleId) {
   if (!moduleId) {
     return EMPTY_MODULE_PROGRESS;
@@ -807,6 +1060,16 @@ function getCurrentExerciseIndex(exercises, currentExerciseId) {
   }
 
   const currentIndex = exercises.findIndex((exercise) => exercise.id === currentExerciseId);
+
+  return currentIndex >= 0 ? currentIndex : 0;
+}
+
+function getCurrentKnowledgeCheckIndex(items, currentItemId) {
+  if (items.length === 0) {
+    return -1;
+  }
+
+  const currentIndex = items.findIndex((item) => item.id === currentItemId);
 
   return currentIndex >= 0 ? currentIndex : 0;
 }

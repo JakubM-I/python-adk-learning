@@ -2,7 +2,7 @@
 
 To jest aplikacja webowa do przerabiania modułów z katalogu `modules/` w przeglądarce.
 
-Etap 4 zawiera:
+Etap 5 zawiera:
 - backend FastAPI,
 - frontend React + Vite,
 - endpoint zdrowia,
@@ -15,6 +15,9 @@ Etap 4 zawiera:
 - parser `exercises.md`,
 - tryb jednego cwiczenia na ekranie,
 - zapis odpowiedzi i statusu cwiczenia.
+- parser `knowledge_check.md`,
+- tryb jednego pytania lub scenariusza na ekranie,
+- zapis odpowiedzi i statusu pytania sprawdzenia wiedzy.
 
 ## Backend
 
@@ -50,6 +53,7 @@ Endpointy czytnika:
 http://127.0.0.1:8000/api/modules
 http://127.0.0.1:8000/api/modules/module-01-python-foundations/content/material
 http://127.0.0.1:8000/api/modules/module-01-python-foundations/exercises
+http://127.0.0.1:8000/api/modules/module-01-python-foundations/knowledge-check
 ```
 
 Endpointy postepu:
@@ -95,9 +99,9 @@ lsof -nP -iTCP:8000 -sTCP:LISTEN
 lsof -nP -iTCP:5173 -sTCP:LISTEN
 ```
 
-## Zakres etapu 4
+## Zakres etapu 5
 
-Ten etap zawiera czytnik modulow z lokalnym postepem i trybem cwiczen:
+Ten etap zawiera czytnik modulow z lokalnym postepem, trybem cwiczen i trybem sprawdzenia wiedzy:
 - wykrywanie folderow `modules/module-*`,
 - pobieranie metadanych modulu z `module.md`,
 - przelaczanie plikow `module.md`, `exercises.md`, `mini_project.md`, `knowledge_check.md`, `summary.md`,
@@ -111,6 +115,11 @@ Ten etap zawiera czytnik modulow z lokalnym postepem i trybem cwiczen:
 - zapis odpowiedzi w `answers`,
 - statusy `W trakcie`, `Do sprawdzenia`, `Rozwiazane`,
 - przechodzenie do poprzedniego i nastepnego cwiczenia.
+- parsowanie pytan z `knowledge_check.md` wedlug sekcji,
+- pokazywanie jednego pytania albo scenariusza naraz,
+- zapis odpowiedzi w `knowledge_check_answers`,
+- statusy `W trakcie`, `Do omowienia`, `Przerobione`,
+- licznik przerobionych pytan i przechodzenie poprzednie/nastepne.
 
 Ten etap celowo nie zawiera jeszcze:
 - uruchamiania kodu Pythona,

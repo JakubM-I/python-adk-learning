@@ -28,10 +28,13 @@ PART_ALIASES = {
 class ModuleProgress(BaseModel):
     completed_parts: list[str] = Field(default_factory=list)
     current_exercise: str | None = None
+    current_knowledge_check: str | None = None
     completed_exercises: list[str] = Field(default_factory=list)
     exercise_statuses: dict[str, str] = Field(default_factory=dict)
+    knowledge_check_statuses: dict[str, str] = Field(default_factory=dict)
     notes: str = ""
     answers: dict[str, str] = Field(default_factory=dict)
+    knowledge_check_answers: dict[str, str] = Field(default_factory=dict)
 
 
 class ProgressPayload(BaseModel):
@@ -225,6 +228,95 @@ def parse_exercises_markdown(markdown: str) -> list[dict[str, str | int]]:
     return exercises
 
 
+def normalize_knowledge_check_category(heading: str) -> str:
+    normalized = slugify_heading(heading)
+
+    if "pytania otwarte" in normalized:
+        return "open_questions"
+
+    if "krotkie scenariusze" in normalized:
+        return "scenarios"
+
+    if "co by bylo gdyby" in normalized:
+        return "what_if"
+
+    if "typowe bledy" in normalized:
+        return "common_mistakes"
+
+    if "samoocena" in normalized:
+        return "self_assessment"
+
+    if "mini zadanie" in normalized:
+        return "active_task"
+
+    return "general"
+
+
+def parse_knowledge_check_markdown(markdown: str) -> list[dict[str, str | int]]:
+    items: list[dict[str, str | int]] = []
+    current_category = "general"
+    current_category_label = "Ogolne"
+    pending_lines: list[str] = []
+
+    def flush_pending() -> None:
+        nonlocal pending_lines
+
+        prompt_markdown = "\n".join(pending_lines).strip()
+
+        if not prompt_markdown:
+            pending_lines = []
+            return
+
+        item_number = len(items) + 1
+        items.append(
+            {
+                "id": f"knowledge-check-{item_number}",
+                "number": item_number,
+                "category": current_category,
+                "category_label": current_category_label,
+                "prompt_markdown": prompt_markdown,
+            }
+        )
+        pending_lines = []
+
+    for line in markdown.splitlines():
+        if line.startswith("# "):
+            continue
+
+        if line.startswith("## "):
+            flush_pending()
+            current_category_label = line.removeprefix("## ").strip()
+            current_category = normalize_knowledge_check_category(current_category_label)
+            continue
+
+        stripped = line.strip()
+        starts_numbered_item = bool(stripped) and stripped[0].isdigit() and ". " in stripped[:5]
+        starts_bullet_item = stripped.startswith("- ")
+
+        if current_category == "active_task":
+            if stripped:
+                pending_lines.append(line)
+            elif pending_lines:
+                pending_lines.append(line)
+            continue
+
+        if starts_numbered_item or starts_bullet_item:
+            flush_pending()
+            if starts_bullet_item:
+                pending_lines = [stripped.removeprefix("- ").strip()]
+            else:
+                _, item_text = stripped.split(". ", maxsplit=1)
+                pending_lines = [item_text.strip()]
+            continue
+
+        if pending_lines or stripped:
+            pending_lines.append(line)
+
+    flush_pending()
+
+    return items
+
+
 def module_path_for(module_id: str) -> Path:
     module_path = MODULES_DIR / module_id
 
@@ -360,6 +452,19 @@ def get_module_exercises(module_id: str) -> dict[str, str | list[dict[str, str |
         "module_id": module_id,
         "filename": filename,
         "exercises": parse_exercises_markdown(markdown),
+    }
+
+
+@app.get("/api/modules/{module_id}/knowledge-check")
+def get_module_knowledge_check(module_id: str) -> dict[str, str | list[dict[str, str | int]]]:
+    module_path = module_path_for(module_id)
+    filename = MODULE_PART_FILES["knowledge_check"]
+    markdown = read_markdown_file(module_path / filename)
+
+    return {
+        "module_id": module_id,
+        "filename": filename,
+        "items": parse_knowledge_check_markdown(markdown),
     }
 
 
