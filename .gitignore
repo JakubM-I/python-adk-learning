@@ -6,5 +6,12 @@ node_modules/
 dist/
 .vite/
 
+.env
+.env.*
+*.db
+*.sqlite
+*.pem
+*.key
+
 platform/data/*.json
 !platform/data/.gitkeep
