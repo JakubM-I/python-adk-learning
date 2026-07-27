@@ -23,6 +23,9 @@ Przy pracy z repo agent powinien uwzględniać następujące pliki:
 
 W zależności od aktywnego trybu pracy agent powinien dodatkowo uwzględnić odpowiedni plik z katalogu `docs/modes/`.
 
+Jeśli zadanie dotyczy lokalnej platformy webowej do nauki, agent powinien dodatkowo uwzględnić dokumenty z katalogu `docs/platform/`.
+Instrukcje platformy są osobną warstwą projektu i nie zastępują zasad tworzenia modułów.
+
 ## Główne zasady pracy
 1. Repo jest źródłem prawdy.
 2. Wszystkie materiały mają być zapisywane w katalogu `modules/`.
@@ -280,3 +283,25 @@ Instrukcja:
 Przykładowe polecenia:
 - Sprawdź jakość modułu 1
 - Zrób review exercises w module 2
+
+---
+
+### Platform mode
+Projektowanie i rozwijanie lokalnej platformy webowej do przerabiania modułów w przeglądarce.
+
+Instrukcje:
+- `docs/platform/product_spec.md`
+- `docs/platform/architecture.md`
+- `docs/platform/content_contract.md`
+- `docs/platform/workflow.md`
+- `docs/platform/ui_guidelines.md`
+
+Przykładowe polecenia:
+- Zbuduj MVP platformy
+- Dodaj czytnik modułów
+- Dodaj tryb ćwiczeń
+- Dodaj zapis postępu
+- Rozbuduj parser exercises.md
+
+Zasada:
+Platforma ma korzystać z `modules/` jako źródła treści, ale nie powinna modyfikować plików modułu podczas zwykłej nauki.
