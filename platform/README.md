@@ -2,11 +2,13 @@
 
 To jest aplikacja webowa do przerabiania modułów z katalogu `modules/` w przeglądarce.
 
-Etap 1 zawiera tylko szkielet:
+Etap 2 zawiera:
 - backend FastAPI,
 - frontend React + Vite,
-- prosty endpoint zdrowia,
-- roboczy ekran, który pobiera status backendu.
+- endpoint zdrowia,
+- endpoint listy modulow,
+- endpoint czytania plikow Markdown modulu,
+- widok listy modulow i zakladki czesci modulu.
 
 ## Backend
 
@@ -28,6 +30,13 @@ Endpoint testowy:
 
 ```text
 http://127.0.0.1:8000/api/health
+```
+
+Endpointy czytnika:
+
+```text
+http://127.0.0.1:8000/api/modules
+http://127.0.0.1:8000/api/modules/module-01-python-foundations/content/material
 ```
 
 ## Frontend
@@ -52,11 +61,15 @@ Jeśli backend działa na innym porcie, ustaw:
 VITE_API_BASE_URL=http://127.0.0.1:8001 npm run dev
 ```
 
-## Zakres etapu 1
+## Zakres etapu 2
+
+Ten etap zawiera pierwszy czytnik modulow:
+- wykrywanie folderow `modules/module-*`,
+- pobieranie metadanych modulu z `module.md`,
+- przelaczanie plikow `module.md`, `exercises.md`, `mini_project.md`, `knowledge_check.md`, `summary.md`,
+- renderowanie Markdown po stronie frontendu.
 
 Ten etap celowo nie zawiera jeszcze:
-- czytnika modułów,
-- renderowania Markdown,
 - zapisu postępu,
 - trybu ćwiczeń,
 - integracji z agentem.
