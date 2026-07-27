@@ -5,7 +5,7 @@ from typing import Any
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
@@ -37,16 +37,60 @@ class ModuleProgress(BaseModel):
     mini_project_submission: str = ""
     answers: dict[str, str] = Field(default_factory=dict)
     knowledge_check_answers: dict[str, str] = Field(default_factory=dict)
-    exercise_feedback: dict[str, str] = Field(default_factory=dict)
-    knowledge_check_feedback: dict[str, str] = Field(default_factory=dict)
+    part_feedback: dict[str, "ReviewFeedback"] = Field(default_factory=dict)
+    mini_project_feedback: dict[str, "ReviewFeedback"] = Field(default_factory=dict)
+    exercise_feedback: dict[str, "ReviewFeedback"] = Field(default_factory=dict)
+    knowledge_check_feedback: dict[str, "ReviewFeedback"] = Field(default_factory=dict)
+
+    @field_validator(
+        "part_feedback",
+        "mini_project_feedback",
+        "exercise_feedback",
+        "knowledge_check_feedback",
+        mode="before",
+    )
+    @classmethod
+    def normalize_feedback_map(cls, value: Any) -> dict[str, Any]:
+        if not isinstance(value, dict):
+            return {}
+
+        normalized: dict[str, Any] = {}
+
+        for key, item in value.items():
+            if isinstance(item, str):
+                if item.strip():
+                    normalized[key] = {
+                        "status": "needs_revision",
+                        "summary": item,
+                        "comments": [],
+                        "next_step": "",
+                        "checked_at": datetime.now(UTC).isoformat(),
+                    }
+                continue
+
+            normalized[key] = item
+
+        return normalized
 
 
 class ProgressPayload(BaseModel):
     modules: dict[str, ModuleProgress] = Field(default_factory=dict)
 
 
+class ReviewFeedback(BaseModel):
+    status: str
+    summary: str
+    comments: list[str] = Field(default_factory=list)
+    next_step: str = ""
+    checked_at: str
+
+
 class AgentFeedbackPayload(BaseModel):
     feedback: str = ""
+
+
+ModuleProgress.model_rebuild()
+ProgressPayload.model_rebuild()
 
 
 app = FastAPI(
@@ -431,6 +475,184 @@ def get_module_progress(progress: ProgressPayload, module_id: str) -> ModuleProg
     return progress.modules.get(module_id, ModuleProgress())
 
 
+def make_review_feedback(answer: str, review_label: str) -> ReviewFeedback:
+    normalized_answer = answer.strip()
+    checked_at = datetime.now(UTC).isoformat()
+
+    if len(normalized_answer) < 12:
+        return ReviewFeedback(
+            status="needs_revision",
+            summary=f"{review_label}: odpowiedz jest jeszcze za krotka, zeby rzetelnie ocenic zrozumienie.",
+            comments=[
+                "Dopisz konkret: co robisz, dlaczego tak i jaki efekt powinien powstac.",
+                "Sama deklaracja albo pojedyncze slowo nie daje agentowi wystarczajacego kontekstu do oceny.",
+            ],
+            next_step="Rozwin odpowiedz o 2-3 zdania albo dopisz fragment kodu, ktory pokazuje Twoje rozumowanie.",
+            checked_at=checked_at,
+        )
+
+    return ReviewFeedback(
+        status="solved",
+        summary=f"{review_label}: odpowiedz wyglada na wystarczajaca w mockowym sprawdzeniu.",
+        comments=[
+            "W prawdziwej integracji agent porowna odpowiedz z trescia zadania i kryteriami z modulu.",
+            "Na tym etapie platforma sprawdza tylko minimalna kompletnosc odpowiedzi oraz zapisuje docelowy format feedbacku.",
+        ],
+        next_step="Przed przejsciem dalej upewnij sie, ze potrafisz wyjasnic swoje rozwiazanie prostszym przykladem.",
+        checked_at=checked_at,
+    )
+
+
+def require_answer(answer: str, detail: str = "Answer is required before review") -> None:
+    if not answer.strip():
+        raise HTTPException(status_code=400, detail=detail)
+
+
+def set_module_progress(progress: ProgressPayload, module_id: str, module_progress: ModuleProgress) -> ProgressPayload:
+    return progress.model_copy(
+        update={
+            "modules": {
+                **progress.modules,
+                module_id: module_progress,
+            },
+        }
+    )
+
+
+def review_material_segment(module_id: str) -> dict[str, Any]:
+    module_path = module_path_for(module_id)
+    read_markdown_file(module_path / MODULE_PART_FILES["material"])
+    progress = load_progress()
+    module_progress = get_module_progress(progress, module_id)
+    answer = module_progress.part_answers.get("material", "")
+    require_answer(answer, "Material answer is required before review")
+    feedback = make_review_feedback(answer, "Pytanie sprawdzajace z materialu")
+    next_module_progress = module_progress.model_copy(
+        update={
+            "part_feedback": {
+                **module_progress.part_feedback,
+                "material": feedback,
+            },
+        }
+    )
+    next_progress = set_module_progress(progress, module_id, next_module_progress)
+    save_progress(next_progress)
+
+    return next_progress.model_dump()
+
+
+def review_mini_project_segment(module_id: str) -> dict[str, Any]:
+    module_path = module_path_for(module_id)
+    read_markdown_file(module_path / MODULE_PART_FILES["mini_project"])
+    progress = load_progress()
+    module_progress = get_module_progress(progress, module_id)
+    submission = module_progress.mini_project_submission
+    answer = module_progress.part_answers.get("mini_project", "")
+    require_answer(submission, "Mini-project submission is required before review")
+    require_answer(answer, "Mini-project check answer is required before review")
+    submission_feedback = make_review_feedback(submission, "Rozwiazanie mini-projektu")
+    answer_feedback = make_review_feedback(answer, "Pytanie sprawdzajace z mini-projektu")
+    next_module_progress = module_progress.model_copy(
+        update={
+            "mini_project_feedback": {
+                **module_progress.mini_project_feedback,
+                "submission": submission_feedback,
+            },
+            "part_feedback": {
+                **module_progress.part_feedback,
+                "mini_project": answer_feedback,
+            },
+        }
+    )
+    next_progress = set_module_progress(progress, module_id, next_module_progress)
+    save_progress(next_progress)
+
+    return next_progress.model_dump()
+
+
+def review_exercises_segment(module_id: str) -> dict[str, Any]:
+    module_path = module_path_for(module_id)
+    markdown = read_markdown_file(module_path / MODULE_PART_FILES["exercises"])
+    exercises = parse_exercises_markdown(markdown)
+    progress = load_progress()
+    module_progress = get_module_progress(progress, module_id)
+    review_items = [
+        exercise
+        for exercise in exercises
+        if module_progress.exercise_statuses.get(str(exercise["id"]), "draft") == "review"
+    ]
+
+    if not review_items:
+        raise HTTPException(status_code=400, detail="No exercises are marked for review")
+
+    next_feedback = dict(module_progress.exercise_feedback)
+    next_statuses = dict(module_progress.exercise_statuses)
+    completed_exercises = set(module_progress.completed_exercises)
+
+    for exercise in review_items:
+        exercise_id = str(exercise["id"])
+        answer = module_progress.answers.get(exercise_id, "")
+        require_answer(answer, f"Answer is required before reviewing {exercise_id}")
+        feedback = make_review_feedback(answer, f"Cwiczenie {exercise['number']}")
+        next_feedback[exercise_id] = feedback
+        next_statuses[exercise_id] = feedback.status
+
+        if feedback.status == "solved":
+            completed_exercises.add(exercise_id)
+        else:
+            completed_exercises.discard(exercise_id)
+
+    next_module_progress = module_progress.model_copy(
+        update={
+            "completed_exercises": sorted(completed_exercises),
+            "exercise_statuses": next_statuses,
+            "exercise_feedback": next_feedback,
+        }
+    )
+    next_progress = set_module_progress(progress, module_id, next_module_progress)
+    save_progress(next_progress)
+
+    return next_progress.model_dump()
+
+
+def review_knowledge_check_segment(module_id: str) -> dict[str, Any]:
+    module_path = module_path_for(module_id)
+    markdown = read_markdown_file(module_path / MODULE_PART_FILES["knowledge_check"])
+    items = parse_knowledge_check_markdown(markdown)
+    progress = load_progress()
+    module_progress = get_module_progress(progress, module_id)
+    review_items = [
+        item
+        for item in items
+        if module_progress.knowledge_check_statuses.get(str(item["id"]), "draft") == "review"
+    ]
+
+    if not review_items:
+        raise HTTPException(status_code=400, detail="No knowledge check items are marked for review")
+
+    next_feedback = dict(module_progress.knowledge_check_feedback)
+    next_statuses = dict(module_progress.knowledge_check_statuses)
+
+    for item in review_items:
+        item_id = str(item["id"])
+        answer = module_progress.knowledge_check_answers.get(item_id, "")
+        require_answer(answer, f"Answer is required before reviewing {item_id}")
+        feedback = make_review_feedback(answer, f"Pytanie {item['number']}")
+        next_feedback[item_id] = feedback
+        next_statuses[item_id] = feedback.status
+
+    next_module_progress = module_progress.model_copy(
+        update={
+            "knowledge_check_statuses": next_statuses,
+            "knowledge_check_feedback": next_feedback,
+        }
+    )
+    next_progress = set_module_progress(progress, module_id, next_module_progress)
+    save_progress(next_progress)
+
+    return next_progress.model_dump()
+
+
 def build_agent_instructions(review_type: str) -> str:
     if review_type == "exercise":
         return (
@@ -545,21 +767,23 @@ def save_agent_feedback(module_id: str, item_id: str, review_type: str, feedback
 
     if review_type == "exercise":
         find_exercise(module_id, item_id)
+        review_feedback = make_review_feedback(feedback, "Reczny feedback cwiczenia")
         next_module_progress = module_progress.model_copy(
             update={
                 "exercise_feedback": {
                     **module_progress.exercise_feedback,
-                    item_id: feedback,
+                    item_id: review_feedback,
                 },
             }
         )
     else:
         find_knowledge_check_item(module_id, item_id)
+        review_feedback = make_review_feedback(feedback, "Reczny feedback sprawdzenia wiedzy")
         next_module_progress = module_progress.model_copy(
             update={
                 "knowledge_check_feedback": {
                     **module_progress.knowledge_check_feedback,
-                    item_id: feedback,
+                    item_id: review_feedback,
                 },
             }
         )
@@ -658,6 +882,26 @@ def get_module_knowledge_check(module_id: str) -> dict[str, str | list[dict[str,
         "filename": filename,
         "items": parse_knowledge_check_markdown(markdown),
     }
+
+
+@app.post("/api/modules/{module_id}/review/material")
+def post_material_review(module_id: str) -> dict[str, Any]:
+    return review_material_segment(module_id)
+
+
+@app.post("/api/modules/{module_id}/review/mini-project")
+def post_mini_project_review(module_id: str) -> dict[str, Any]:
+    return review_mini_project_segment(module_id)
+
+
+@app.post("/api/modules/{module_id}/review/exercises")
+def post_exercises_review(module_id: str) -> dict[str, Any]:
+    return review_exercises_segment(module_id)
+
+
+@app.post("/api/modules/{module_id}/review/knowledge-check")
+def post_knowledge_check_review(module_id: str) -> dict[str, Any]:
+    return review_knowledge_check_segment(module_id)
 
 
 @app.get("/api/modules/{module_id}/exercises/{exercise_id}/agent-context")

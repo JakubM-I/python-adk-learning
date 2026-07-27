@@ -101,6 +101,24 @@ To rozdzielenie jest ważne:
 - odpowiedzi użytkownika można łatwo resetować,
 - agent może aktualizować moduł bez ryzyka nadpisania pracy użytkownika.
 
+## Statusy i feedback
+
+Elementy sprawdzane przez platformę powinny używać wspólnego cyklu statusów:
+- `draft` -> `W trakcie`,
+- `review` -> `Do sprawdzenia`,
+- `solved` -> `Rozwiązane`,
+- `needs_revision` -> `Do powtórki`.
+
+Feedback powinien być zapisany przy konkretnej odpowiedzi, a nie w osobnym polu roboczym dla agenta.
+Minimalny obiekt feedbacku zawiera:
+- `status`,
+- `summary`,
+- `comments`,
+- `next_step`,
+- `checked_at`.
+
+Platforma sprawdza jeden segment naraz: materiał, ćwiczenia, mini-projekt albo sprawdzenie wiedzy.
+
 ## Metadane w przyszłości
 
 Jeśli parser nagłówków okaże się zbyt kruchy, można dodać opcjonalny plik:

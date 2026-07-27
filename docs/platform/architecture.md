@@ -124,9 +124,21 @@ Na start wystarczy prosty JSON:
       "completed_parts": ["module"],
       "current_exercise": "exercise-1",
       "completed_exercises": [],
+      "exercise_statuses": {
+        "exercise-1": "review"
+      },
       "notes": "Moje notatki...",
       "answers": {
         "exercise-1": "Moja odpowiedz..."
+      },
+      "exercise_feedback": {
+        "exercise-1": {
+          "status": "solved",
+          "summary": "Krótka ocena",
+          "comments": ["Konkretna uwaga"],
+          "next_step": "Pytanie albo kolejny krok",
+          "checked_at": "2026-07-27T10:00:00Z"
+        }
       }
     }
   }
@@ -135,6 +147,10 @@ Na start wystarczy prosty JSON:
 
 W MVP dane mogą być przechowywane w pliku.
 SQLite warto rozważyć dopiero wtedy, gdy pojawi się historia odpowiedzi, wiele sesji, tagowanie albo zaawansowane wyszukiwanie.
+
+Statusy elementów sprawdzanych są wspólne dla ćwiczeń i sprawdzenia wiedzy:
+`draft`, `review`, `solved`, `needs_revision`.
+Ten sam obiekt feedbacku powinien być używany dla pytań sprawdzających z materiału, mini-projektu, ćwiczeń i sprawdzenia wiedzy.
 
 ## Parsing Markdown
 

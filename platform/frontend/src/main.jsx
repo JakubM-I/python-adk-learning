@@ -25,6 +25,8 @@ const EMPTY_MODULE_PROGRESS = {
   mini_project_submission: "",
   answers: {},
   knowledge_check_answers: {},
+  part_feedback: {},
+  mini_project_feedback: {},
   exercise_feedback: {},
   knowledge_check_feedback: {},
 };
@@ -33,12 +35,14 @@ const EXERCISE_STATUS_LABELS = {
   draft: "W trakcie",
   review: "Do sprawdzenia",
   solved: "Rozwiazane",
+  needs_revision: "Do powtorki",
 };
 
 const KNOWLEDGE_CHECK_STATUS_LABELS = {
   draft: "W trakcie",
-  review: "Do omowienia",
-  done: "Przerobione",
+  review: "Do sprawdzenia",
+  solved: "Rozwiazane",
+  needs_revision: "Do powtorki",
 };
 
 function escapeHtml(value) {
@@ -215,14 +219,13 @@ function App() {
   const [knowledgeCheckError, setKnowledgeCheckError] = useState("");
   const [progressError, setProgressError] = useState("");
   const [progressStatus, setProgressStatus] = useState("Wczytywanie postepu");
-  const [agentContext, setAgentContext] = useState(null);
-  const [agentStatus, setAgentStatus] = useState("");
-  const [agentError, setAgentError] = useState("");
+  const [reviewStatus, setReviewStatus] = useState("");
+  const [reviewError, setReviewError] = useState("");
   const [isLoadingModules, setIsLoadingModules] = useState(true);
   const [isLoadingContent, setIsLoadingContent] = useState(false);
   const [isLoadingExercises, setIsLoadingExercises] = useState(false);
   const [isLoadingKnowledgeCheck, setIsLoadingKnowledgeCheck] = useState(false);
-  const [isLoadingAgentContext, setIsLoadingAgentContext] = useState(false);
+  const [isReviewing, setIsReviewing] = useState(false);
 
   useEffect(() => {
     let isActive = true;
@@ -449,12 +452,14 @@ function App() {
     : "";
   const currentPartAnswer = selectedModuleProgress.part_answers[selectedPart] ?? "";
   const currentMiniProjectSubmission = selectedModuleProgress.mini_project_submission ?? "";
+  const currentPartFeedback = selectedModuleProgress.part_feedback[selectedPart] ?? null;
+  const currentMiniProjectFeedback = selectedModuleProgress.mini_project_feedback.submission ?? null;
   const currentExerciseFeedback = currentExercise
-    ? selectedModuleProgress.exercise_feedback[currentExercise.id] ?? ""
-    : "";
+    ? selectedModuleProgress.exercise_feedback[currentExercise.id] ?? null
+    : null;
   const currentKnowledgeCheckFeedback = currentKnowledgeCheckItem
-    ? selectedModuleProgress.knowledge_check_feedback[currentKnowledgeCheckItem.id] ?? ""
-    : "";
+    ? selectedModuleProgress.knowledge_check_feedback[currentKnowledgeCheckItem.id] ?? null
+    : null;
   const currentExerciseStatus = currentExercise
     ? selectedModuleProgress.exercise_statuses[currentExercise.id] ?? "draft"
     : "draft";
@@ -462,7 +467,7 @@ function App() {
     ? selectedModuleProgress.knowledge_check_statuses[currentKnowledgeCheckItem.id] ?? "draft"
     : "draft";
   const completedKnowledgeCheckCount = knowledgeCheckItems.filter(
-    (item) => selectedModuleProgress.knowledge_check_statuses[item.id] === "done",
+    (item) => selectedModuleProgress.knowledge_check_statuses[item.id] === "solved",
   ).length;
   const completedAvailableParts = availableParts.filter((part) =>
     selectedModuleProgress.completed_parts.includes(part),
@@ -476,9 +481,8 @@ function App() {
   }, [selectedModuleId, selectedModuleProgress.notes]);
 
   useEffect(() => {
-    setAgentContext(null);
-    setAgentStatus("");
-    setAgentError("");
+    setReviewStatus("");
+    setReviewError("");
   }, [selectedModuleId, selectedPart, currentExercise?.id, currentKnowledgeCheckItem?.id]);
 
   function selectModule(moduleId) {
@@ -586,18 +590,24 @@ function App() {
       return Promise.resolve(null);
     }
 
-    const nextProgress = buildNextProgress(selectedModuleId, (currentModuleProgress) => ({
-      ...currentModuleProgress,
-      current_exercise: currentExercise.id,
-      answers: {
-        ...currentModuleProgress.answers,
-        [currentExercise.id]: answer,
-      },
-      exercise_statuses: {
-        ...currentModuleProgress.exercise_statuses,
-        [currentExercise.id]: currentModuleProgress.exercise_statuses[currentExercise.id] ?? "draft",
-      },
-    }));
+    const nextProgress = buildNextProgress(selectedModuleId, (currentModuleProgress) => {
+      const nextFeedback = { ...currentModuleProgress.exercise_feedback };
+      delete nextFeedback[currentExercise.id];
+
+      return {
+        ...currentModuleProgress,
+        current_exercise: currentExercise.id,
+        answers: {
+          ...currentModuleProgress.answers,
+          [currentExercise.id]: answer,
+        },
+        exercise_feedback: nextFeedback,
+        exercise_statuses: {
+          ...currentModuleProgress.exercise_statuses,
+          [currentExercise.id]: "draft",
+        },
+      };
+    });
 
     setProgress(nextProgress);
     return saveProgress(nextProgress);
@@ -653,19 +663,24 @@ function App() {
       return Promise.resolve(null);
     }
 
-    const nextProgress = buildNextProgress(selectedModuleId, (currentModuleProgress) => ({
-      ...currentModuleProgress,
-      current_knowledge_check: currentKnowledgeCheckItem.id,
-      knowledge_check_answers: {
-        ...currentModuleProgress.knowledge_check_answers,
-        [currentKnowledgeCheckItem.id]: answer,
-      },
-      knowledge_check_statuses: {
-        ...currentModuleProgress.knowledge_check_statuses,
-        [currentKnowledgeCheckItem.id]:
-          currentModuleProgress.knowledge_check_statuses[currentKnowledgeCheckItem.id] ?? "draft",
-      },
-    }));
+    const nextProgress = buildNextProgress(selectedModuleId, (currentModuleProgress) => {
+      const nextFeedback = { ...currentModuleProgress.knowledge_check_feedback };
+      delete nextFeedback[currentKnowledgeCheckItem.id];
+
+      return {
+        ...currentModuleProgress,
+        current_knowledge_check: currentKnowledgeCheckItem.id,
+        knowledge_check_answers: {
+          ...currentModuleProgress.knowledge_check_answers,
+          [currentKnowledgeCheckItem.id]: answer,
+        },
+        knowledge_check_feedback: nextFeedback,
+        knowledge_check_statuses: {
+          ...currentModuleProgress.knowledge_check_statuses,
+          [currentKnowledgeCheckItem.id]: "draft",
+        },
+      };
+    });
 
     setProgress(nextProgress);
     return saveProgress(nextProgress);
@@ -676,13 +691,19 @@ function App() {
       return Promise.resolve(null);
     }
 
-    const nextProgress = buildNextProgress(selectedModuleId, (currentModuleProgress) => ({
-      ...currentModuleProgress,
-      part_answers: {
-        ...currentModuleProgress.part_answers,
-        [partId]: answer,
-      },
-    }));
+    const nextProgress = buildNextProgress(selectedModuleId, (currentModuleProgress) => {
+      const nextFeedback = { ...currentModuleProgress.part_feedback };
+      delete nextFeedback[partId];
+
+      return {
+        ...currentModuleProgress,
+        part_answers: {
+          ...currentModuleProgress.part_answers,
+          [partId]: answer,
+        },
+        part_feedback: nextFeedback,
+      };
+    });
 
     setProgress(nextProgress);
     return saveProgress(nextProgress);
@@ -693,10 +714,16 @@ function App() {
       return Promise.resolve(null);
     }
 
-    const nextProgress = buildNextProgress(selectedModuleId, (currentModuleProgress) => ({
-      ...currentModuleProgress,
-      mini_project_submission: submission,
-    }));
+    const nextProgress = buildNextProgress(selectedModuleId, (currentModuleProgress) => {
+      const nextFeedback = { ...currentModuleProgress.mini_project_feedback };
+      delete nextFeedback.submission;
+
+      return {
+        ...currentModuleProgress,
+        mini_project_submission: submission,
+        mini_project_feedback: nextFeedback,
+      };
+    });
 
     setProgress(nextProgress);
     return saveProgress(nextProgress);
@@ -720,78 +747,109 @@ function App() {
     saveProgress(nextProgress);
   }
 
-  async function prepareExerciseAgentContext(answer) {
+  async function reviewMaterial(answer) {
+    if (!selectedModuleId) {
+      return;
+    }
+
+    await savePartAnswer("material", answer);
+    await postSegmentReview(`modules/${selectedModuleId}/review/material`);
+  }
+
+  async function reviewMiniProject(submission, answer) {
+    if (!selectedModuleId) {
+      return;
+    }
+
+    const nextProgress = buildNextProgress(selectedModuleId, (currentModuleProgress) => {
+      const nextPartFeedback = { ...currentModuleProgress.part_feedback };
+      const nextMiniProjectFeedback = { ...currentModuleProgress.mini_project_feedback };
+      delete nextPartFeedback.mini_project;
+      delete nextMiniProjectFeedback.submission;
+
+      return {
+        ...currentModuleProgress,
+        mini_project_submission: submission,
+        part_answers: {
+          ...currentModuleProgress.part_answers,
+          mini_project: answer,
+        },
+        part_feedback: nextPartFeedback,
+        mini_project_feedback: nextMiniProjectFeedback,
+      };
+    });
+
+    setProgress(nextProgress);
+    await saveProgress(nextProgress);
+    await postSegmentReview(`modules/${selectedModuleId}/review/mini-project`);
+  }
+
+  async function reviewExercises(answer) {
     if (!selectedModuleId || !currentExercise) {
       return;
     }
 
-    await saveExerciseAnswer(answer);
-    await loadAgentContext(`modules/${selectedModuleId}/exercises/${currentExercise.id}/agent-context`);
+    const nextProgress = buildNextProgress(selectedModuleId, (currentModuleProgress) => {
+      const nextFeedback = { ...currentModuleProgress.exercise_feedback };
+      delete nextFeedback[currentExercise.id];
+
+      return {
+        ...currentModuleProgress,
+        current_exercise: currentExercise.id,
+        answers: {
+          ...currentModuleProgress.answers,
+          [currentExercise.id]: answer,
+        },
+        exercise_feedback: nextFeedback,
+        exercise_statuses: {
+          ...currentModuleProgress.exercise_statuses,
+          [currentExercise.id]: "review",
+        },
+      };
+    });
+
+    setProgress(nextProgress);
+    await saveProgress(nextProgress);
+    await postSegmentReview(`modules/${selectedModuleId}/review/exercises`);
   }
 
-  async function prepareKnowledgeCheckAgentContext(answer) {
+  async function reviewKnowledgeCheck(answer) {
     if (!selectedModuleId || !currentKnowledgeCheckItem) {
       return;
     }
 
-    await saveKnowledgeCheckAnswer(answer);
-    await loadAgentContext(`modules/${selectedModuleId}/knowledge-check/${currentKnowledgeCheckItem.id}/agent-context`);
+    const nextProgress = buildNextProgress(selectedModuleId, (currentModuleProgress) => {
+      const nextFeedback = { ...currentModuleProgress.knowledge_check_feedback };
+      delete nextFeedback[currentKnowledgeCheckItem.id];
+
+      return {
+        ...currentModuleProgress,
+        current_knowledge_check: currentKnowledgeCheckItem.id,
+        knowledge_check_answers: {
+          ...currentModuleProgress.knowledge_check_answers,
+          [currentKnowledgeCheckItem.id]: answer,
+        },
+        knowledge_check_feedback: nextFeedback,
+        knowledge_check_statuses: {
+          ...currentModuleProgress.knowledge_check_statuses,
+          [currentKnowledgeCheckItem.id]: "review",
+        },
+      };
+    });
+
+    setProgress(nextProgress);
+    await saveProgress(nextProgress);
+    await postSegmentReview(`modules/${selectedModuleId}/review/knowledge-check`);
   }
 
-  async function loadAgentContext(path) {
-    setIsLoadingAgentContext(true);
-    setAgentStatus("Przygotowuje kontekst...");
-    setAgentError("");
-
-    try {
-      const response = await fetch(`${API_BASE_URL}/api/${path}`);
-
-      if (!response.ok) {
-        throw new Error(`Backend odpowiedzial statusem ${response.status}`);
-      }
-
-      const payload = await response.json();
-      setAgentContext(payload);
-      setAgentStatus("Kontekst gotowy");
-    } catch (caughtError) {
-      setAgentContext(null);
-      setAgentError(caughtError instanceof Error ? caughtError.message : "Nie udalo sie przygotowac kontekstu.");
-      setAgentStatus("Blad integracji");
-    } finally {
-      setIsLoadingAgentContext(false);
-    }
-  }
-
-  async function saveExerciseFeedback(feedback) {
-    if (!selectedModuleId || !currentExercise) {
-      return;
-    }
-
-    await saveAgentFeedback(`modules/${selectedModuleId}/exercises/${currentExercise.id}/feedback`, feedback);
-  }
-
-  async function saveKnowledgeCheckFeedback(feedback) {
-    if (!selectedModuleId || !currentKnowledgeCheckItem) {
-      return;
-    }
-
-    await saveAgentFeedback(
-      `modules/${selectedModuleId}/knowledge-check/${currentKnowledgeCheckItem.id}/feedback`,
-      feedback,
-    );
-  }
-
-  async function saveAgentFeedback(path, feedback) {
-    setAgentStatus("Zapisuje feedback...");
-    setAgentError("");
+  async function postSegmentReview(path) {
+    setIsReviewing(true);
+    setReviewStatus("Sprawdzam odpowiedzi...");
+    setReviewError("");
 
     try {
       const response = await fetch(`${API_BASE_URL}/api/${path}`, {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ feedback }),
+        method: "POST",
       });
 
       if (!response.ok) {
@@ -800,10 +858,12 @@ function App() {
 
       const payload = await response.json();
       setProgress(payload);
-      setAgentStatus("Feedback zapisany");
+      setReviewStatus("Sprawdzone");
     } catch (caughtError) {
-      setAgentError(caughtError instanceof Error ? caughtError.message : "Nie udalo sie zapisac feedbacku.");
-      setAgentStatus("Blad zapisu feedbacku");
+      setReviewError(caughtError instanceof Error ? caughtError.message : "Nie udalo sie sprawdzic odpowiedzi.");
+      setReviewStatus("Blad sprawdzania");
+    } finally {
+      setIsReviewing(false);
     }
   }
 
@@ -933,9 +993,16 @@ function App() {
                       <PartWorkspacePanel
                         partId={selectedPart}
                         answer={currentPartAnswer}
+                        answerFeedback={currentPartFeedback}
+                        isReviewing={isReviewing}
                         miniProjectSubmission={currentMiniProjectSubmission}
+                        miniProjectFeedback={currentMiniProjectFeedback}
                         onAnswerBlur={savePartAnswer}
+                        onReviewMaterial={reviewMaterial}
+                        onReviewMiniProject={reviewMiniProject}
                         onSubmissionBlur={saveMiniProjectSubmission}
+                        reviewError={reviewError}
+                        reviewStatus={reviewStatus}
                       />
                     ) : null}
                   </>
@@ -947,16 +1014,16 @@ function App() {
                     exercise={currentExercise}
                     exerciseCount={exercises.length}
                     onAnswerBlur={saveExerciseAnswer}
-                    onPrepareReview={prepareExerciseAgentContext}
-                    onSaveFeedback={saveExerciseFeedback}
+                    onReview={reviewExercises}
                     onNavigate={selectExercise}
                     onStatusChange={setExerciseStatus}
-                    agentContext={agentContext}
-                    agentError={agentError}
-                    agentStatus={agentStatus}
                     feedback={currentExerciseFeedback}
-                    isLoadingAgentContext={isLoadingAgentContext}
+                    isReviewing={isReviewing}
+                    reviewError={reviewError}
+                    reviewStatus={reviewStatus}
                     status={currentExerciseStatus}
+                    statuses={selectedModuleProgress.exercise_statuses}
+                    answers={selectedModuleProgress.answers}
                   />
                 ) : null}
                 {!isLoadingExercises && selectedPart === "exercises" && !currentExercise && !exercisesError ? (
@@ -970,16 +1037,16 @@ function App() {
                     item={currentKnowledgeCheckItem}
                     itemCount={knowledgeCheckItems.length}
                     onAnswerBlur={saveKnowledgeCheckAnswer}
-                    onPrepareReview={prepareKnowledgeCheckAgentContext}
-                    onSaveFeedback={saveKnowledgeCheckFeedback}
+                    onReview={reviewKnowledgeCheck}
                     onNavigate={selectKnowledgeCheckItem}
                     onStatusChange={setKnowledgeCheckStatus}
-                    agentContext={agentContext}
-                    agentError={agentError}
-                    agentStatus={agentStatus}
                     feedback={currentKnowledgeCheckFeedback}
-                    isLoadingAgentContext={isLoadingAgentContext}
+                    isReviewing={isReviewing}
+                    reviewError={reviewError}
+                    reviewStatus={reviewStatus}
                     status={currentKnowledgeCheckStatus}
+                    statuses={selectedModuleProgress.knowledge_check_statuses}
+                    answers={selectedModuleProgress.knowledge_check_answers}
                   />
                 ) : null}
                 {!isLoadingKnowledgeCheck &&
@@ -1025,10 +1092,17 @@ function App() {
 
 function PartWorkspacePanel({
   answer,
+  answerFeedback,
+  isReviewing,
   miniProjectSubmission,
+  miniProjectFeedback,
   onAnswerBlur,
+  onReviewMaterial,
+  onReviewMiniProject,
   onSubmissionBlur,
   partId,
+  reviewError,
+  reviewStatus,
 }) {
   const [answerDraft, setAnswerDraft] = useState(answer);
   const [submissionDraft, setSubmissionDraft] = useState(miniProjectSubmission);
@@ -1041,6 +1115,9 @@ function PartWorkspacePanel({
   useEffect(() => {
     setSubmissionDraft(miniProjectSubmission);
   }, [miniProjectSubmission, partId]);
+
+  const canReviewAnswer = answerDraft.trim().length >= 4;
+  const canReviewMiniProject = submissionDraft.trim().length >= 4 && canReviewAnswer;
 
   return (
     <section className="part-workspace" aria-label="Miejsce na odpowiedz">
@@ -1063,6 +1140,7 @@ function PartWorkspacePanel({
             spellCheck="false"
             value={submissionDraft}
           />
+          <ReviewFeedbackPanel feedback={miniProjectFeedback} title="Ocena rozwiazania mini-projektu" />
         </label>
       ) : null}
 
@@ -1075,27 +1153,46 @@ function PartWorkspacePanel({
           placeholder="Zapisz swoja odpowiedz. Platforma przechowa ja lokalnie w postepie modulu."
           value={answerDraft}
         />
+        <ReviewFeedbackPanel feedback={answerFeedback} title="Ocena pytania sprawdzajacego" />
       </label>
+
+      <div className="review-actions">
+        <button
+          className="primary-action"
+          disabled={isReviewing || (isMiniProject ? !canReviewMiniProject : !canReviewAnswer)}
+          onMouseDown={(event) => event.preventDefault()}
+          onClick={() =>
+            isMiniProject
+              ? onReviewMiniProject(submissionDraft, answerDraft)
+              : onReviewMaterial(answerDraft)
+          }
+          type="button"
+        >
+          {isReviewing ? "Sprawdzam..." : "Sprawdz"}
+        </button>
+        {reviewStatus ? <span className="review-status-text">{reviewStatus}</span> : null}
+      </div>
+      {reviewError ? <p className="error-text">{reviewError}</p> : null}
     </section>
   );
 }
 
 function ExerciseMode({
   answer,
-  agentContext,
-  agentError,
-  agentStatus,
+  answers,
   currentIndex,
   exercise,
   exerciseCount,
   feedback,
-  isLoadingAgentContext,
+  isReviewing,
   onAnswerBlur,
-  onPrepareReview,
-  onSaveFeedback,
   onNavigate,
+  onReview,
   onStatusChange,
+  reviewError,
+  reviewStatus,
   status,
+  statuses,
 }) {
   const [answerDraft, setAnswerDraft] = useState(answer);
 
@@ -1105,6 +1202,7 @@ function ExerciseMode({
 
   const canGoPrevious = currentIndex > 0;
   const canGoNext = currentIndex < exerciseCount - 1;
+  const isLastExercise = currentIndex === exerciseCount - 1;
 
   return (
     <article className="exercise-mode">
@@ -1158,18 +1256,8 @@ function ExerciseMode({
           spellCheck="false"
           value={answerDraft}
         />
+        <ReviewFeedbackPanel feedback={feedback} title="Ocena cwiczenia" />
       </section>
-
-      <AgentReviewPanel
-        agentContext={agentContext}
-        agentError={agentError}
-        agentStatus={agentStatus}
-        canPrepare={answerDraft.trim().length > 0}
-        feedback={feedback}
-        isLoading={isLoadingAgentContext}
-        onPrepareReview={() => onPrepareReview(answerDraft)}
-        onSaveFeedback={onSaveFeedback}
-      />
 
       <details className="exercise-details expected-effect">
         <summary>Pokaz oczekiwany efekt</summary>
@@ -1190,32 +1278,48 @@ function ExerciseMode({
           <button className="primary-action" onClick={() => onStatusChange("solved")} type="button">
             Rozwiazane
           </button>
+          <button className="secondary-action" onClick={() => onStatusChange("needs_revision")} type="button">
+            Do powtorki
+          </button>
         </div>
         <button className="secondary-action" disabled={!canGoNext} onClick={() => onNavigate(currentIndex + 1)} type="button">
           Nastepne
         </button>
       </div>
+
+      {isLastExercise ? (
+        <SegmentReviewSummary
+          answers={answers}
+          isReviewing={isReviewing}
+          itemCount={exerciseCount}
+          itemLabel="cwiczen"
+          onReview={() => onReview(answerDraft)}
+          reviewError={reviewError}
+          reviewStatus={reviewStatus}
+          statuses={statuses}
+        />
+      ) : null}
     </article>
   );
 }
 
 function KnowledgeCheckMode({
   answer,
-  agentContext,
-  agentError,
-  agentStatus,
+  answers,
   completedCount,
   currentIndex,
   feedback,
-  isLoadingAgentContext,
+  isReviewing,
   item,
   itemCount,
   onAnswerBlur,
-  onPrepareReview,
-  onSaveFeedback,
   onNavigate,
+  onReview,
   onStatusChange,
+  reviewError,
+  reviewStatus,
   status,
+  statuses,
 }) {
   const [answerDraft, setAnswerDraft] = useState(answer);
 
@@ -1225,6 +1329,7 @@ function KnowledgeCheckMode({
 
   const canGoPrevious = currentIndex > 0;
   const canGoNext = currentIndex < itemCount - 1;
+  const isLastItem = currentIndex === itemCount - 1;
 
   return (
     <article className="exercise-mode knowledge-check-mode">
@@ -1267,18 +1372,8 @@ function KnowledgeCheckMode({
           spellCheck="false"
           value={answerDraft}
         />
+        <ReviewFeedbackPanel feedback={feedback} title="Ocena pytania" />
       </section>
-
-      <AgentReviewPanel
-        agentContext={agentContext}
-        agentError={agentError}
-        agentStatus={agentStatus}
-        canPrepare={answerDraft.trim().length > 0}
-        feedback={feedback}
-        isLoading={isLoadingAgentContext}
-        onPrepareReview={() => onPrepareReview(answerDraft)}
-        onSaveFeedback={onSaveFeedback}
-      />
 
       <div className="exercise-actions">
         <button className="secondary-action" disabled={!canGoPrevious} onClick={() => onNavigate(currentIndex - 1)} type="button">
@@ -1289,78 +1384,103 @@ function KnowledgeCheckMode({
             W trakcie
           </button>
           <button className="secondary-action" onClick={() => onStatusChange("review")} type="button">
-            Do omowienia
+            Do sprawdzenia
           </button>
-          <button className="primary-action" onClick={() => onStatusChange("done")} type="button">
-            Przerobione
+          <button className="primary-action" onClick={() => onStatusChange("solved")} type="button">
+            Rozwiazane
+          </button>
+          <button className="secondary-action" onClick={() => onStatusChange("needs_revision")} type="button">
+            Do powtorki
           </button>
         </div>
         <button className="secondary-action" disabled={!canGoNext} onClick={() => onNavigate(currentIndex + 1)} type="button">
           Nastepne
         </button>
       </div>
+
+      {isLastItem ? (
+        <SegmentReviewSummary
+          answers={answers}
+          isReviewing={isReviewing}
+          itemCount={itemCount}
+          itemLabel="pytan"
+          onReview={() => onReview(answerDraft)}
+          reviewError={reviewError}
+          reviewStatus={reviewStatus}
+          statuses={statuses}
+        />
+      ) : null}
     </article>
   );
 }
 
-function AgentReviewPanel({
-  agentContext,
-  agentError,
-  agentStatus,
-  canPrepare,
-  feedback,
-  isLoading,
-  onPrepareReview,
-  onSaveFeedback,
-}) {
-  const [feedbackDraft, setFeedbackDraft] = useState(feedback);
-
-  useEffect(() => {
-    setFeedbackDraft(feedback);
-  }, [feedback]);
-
-  const contextText = agentContext ? JSON.stringify(agentContext, null, 2) : "";
+function ReviewFeedbackPanel({ feedback, title }) {
+  if (!feedback) {
+    return null;
+  }
 
   return (
-    <section className="agent-panel">
-      <div className="agent-panel-header">
-        <div>
-          <p className="eyebrow">Agent</p>
-          <h4>Kontekst i feedback</h4>
-        </div>
-        <button className="secondary-action" disabled={isLoading || !canPrepare} onClick={onPrepareReview} type="button">
-          {isLoading ? "Przygotowuje..." : "Przygotuj kontekst"}
-        </button>
+    <section className={`review-feedback status-${feedback.status}`}>
+      <div className="review-feedback-header">
+        <p className="eyebrow">{title}</p>
+        <span>{EXERCISE_STATUS_LABELS[feedback.status] ?? feedback.status}</span>
       </div>
-
-      <p className="agent-note">
-        Najpierw wpisz wlasna probe. Dopiero potem paczka doda tresc zadania, Twoja odpowiedz, kontekst modulu i kryteria oceny.
-      </p>
-
-      {agentStatus ? <p className="agent-status">{agentStatus}</p> : null}
-      {agentError ? <p className="error-text">{agentError}</p> : null}
-
-      {contextText ? (
-        <details className="agent-context">
-          <summary>Paczka dla agenta</summary>
-          <pre>
-            <code>{contextText}</code>
-          </pre>
-        </details>
+      <p>{feedback.summary}</p>
+      {feedback.comments?.length ? (
+        <ul>
+          {feedback.comments.map((comment, index) => (
+            <li key={index}>{comment}</li>
+          ))}
+        </ul>
       ) : null}
+      {feedback.next_step ? <p className="review-next-step">{feedback.next_step}</p> : null}
+    </section>
+  );
+}
 
-      <div className="feedback-editor">
-        <label htmlFor="agent-feedback">Feedback od agenta</label>
-        <textarea
-          id="agent-feedback"
-          onChange={(event) => setFeedbackDraft(event.target.value)}
-          placeholder="Wklej feedback albo dopisz notatke po rozmowie z agentem."
-          value={feedbackDraft}
-        />
-        <button className="primary-action" onClick={() => onSaveFeedback(feedbackDraft)} type="button">
-          Zapisz feedback
-        </button>
+function SegmentReviewSummary({
+  answers,
+  isReviewing,
+  itemCount,
+  itemLabel,
+  onReview,
+  reviewError,
+  reviewStatus,
+  statuses,
+}) {
+  const answerCount = Object.values(answers).filter((answer) => answer.trim().length > 0).length;
+  const readyCount = Object.values(statuses).filter((status) => status === "review").length;
+  const solvedCount = Object.values(statuses).filter((status) => status === "solved").length;
+  const needsRevisionCount = Object.values(statuses).filter((status) => status === "needs_revision").length;
+  const canReview = readyCount > 0;
+
+  return (
+    <section className="segment-summary">
+      <div>
+        <p className="eyebrow">Podsumowanie</p>
+        <h4>Gotowe do sprawdzenia</h4>
       </div>
+      <div className="segment-summary-grid">
+        <span>{itemCount} {itemLabel}</span>
+        <span>{answerCount} odpowiedzi</span>
+        <span>{readyCount} do sprawdzenia</span>
+        <span>{solvedCount} rozwiazane</span>
+        <span>{needsRevisionCount} do powtorki</span>
+      </div>
+      <div className="review-actions">
+        <button
+          className="primary-action"
+          disabled={isReviewing || !canReview}
+          onMouseDown={(event) => event.preventDefault()}
+          onClick={onReview}
+          type="button"
+        >
+          {isReviewing ? "Sprawdzam..." : "Sprawdz"}
+        </button>
+        {reviewStatus ? <span className="review-status-text">{reviewStatus}</span> : null}
+      </div>
+      {!canReview ? <p className="review-note">Oznacz przynajmniej jedna odpowiedz jako Do sprawdzenia.</p> : null}
+      {reviewError ? <p className="error-text">{reviewError}</p> : null}
     </section>
   );
 }

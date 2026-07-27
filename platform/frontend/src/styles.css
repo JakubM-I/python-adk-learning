@@ -633,10 +633,10 @@ h3 {
   color: #1d6b43;
 }
 
-.status-done {
-  border: 1px solid #b7d9c6;
-  background: #edf8f1;
-  color: #1d6b43;
+.status-needs_revision {
+  border: 1px solid #efc2bd;
+  background: #fff1ef;
+  color: #9b3127;
 }
 
 .exercise-section,
@@ -730,7 +730,8 @@ h3 {
   gap: 8px;
 }
 
-.agent-panel {
+.review-feedback,
+.segment-summary {
   display: grid;
   gap: 12px;
   border: 1px solid #d7dee6;
@@ -739,84 +740,91 @@ h3 {
   padding: 16px;
 }
 
-.agent-panel-header {
+.review-feedback.status-solved {
+  border-color: #b7d9c6;
+  background: #f4fbf6;
+}
+
+.review-feedback.status-needs_revision {
+  border-color: #efc2bd;
+  background: #fff7f5;
+}
+
+.review-feedback-header,
+.review-actions {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
   gap: 16px;
 }
 
-.agent-panel-header h4 {
+.review-feedback-header span {
+  display: inline-flex;
+  min-height: 28px;
+  align-items: center;
+  border-radius: 999px;
+  font-size: 0.82rem;
+  font-weight: 800;
+  padding: 4px 10px;
+  white-space: nowrap;
+}
+
+.review-feedback p,
+.review-feedback ul,
+.review-note,
+.review-status-text {
+  margin: 0;
+}
+
+.review-feedback p,
+.review-feedback li {
+  color: #2f4050;
+}
+
+.review-feedback ul {
+  padding-left: 20px;
+}
+
+.review-next-step,
+.review-note {
+  color: #526578;
+  font-weight: 700;
+}
+
+.segment-summary {
+  background: #ffffff;
+}
+
+.segment-summary h4 {
   margin: 4px 0 0;
   color: #17202a;
-  font-size: 1.1rem;
+  font-size: 1.12rem;
+  line-height: 1.2;
 }
 
-.agent-note,
-.agent-status {
-  margin: 0;
+.segment-summary-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.segment-summary-grid span,
+.review-status-text {
+  display: inline-flex;
+  min-height: 28px;
+  align-items: center;
+  border: 1px solid #d2dde7;
+  border-radius: 999px;
+  background: #f8fafc;
   color: #526578;
-}
-
-.agent-status {
+  font-size: 0.82rem;
   font-weight: 800;
+  padding: 4px 10px;
 }
 
-.agent-context {
-  border: 1px solid #dbe3ea;
-  border-radius: 8px;
-  background: #ffffff;
-  padding: 12px;
-}
-
-.agent-context summary {
-  cursor: pointer;
-  color: #25495a;
-  font-weight: 800;
-}
-
-.agent-context pre {
-  max-height: 360px;
-  overflow: auto;
-  margin: 12px 0 0;
-  border-radius: 8px;
-  background: #18232d;
-  color: #f2f7fb;
-  padding: 14px;
-}
-
-.agent-context code {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
-  font-size: 0.86rem;
-  line-height: 1.55;
-}
-
-.feedback-editor {
-  display: grid;
-  gap: 10px;
-}
-
-.feedback-editor label {
-  color: #2f4050;
-  font-weight: 800;
-}
-
-.feedback-editor textarea {
-  display: block;
-  width: 100%;
-  min-height: 150px;
-  resize: vertical;
-  border: 1px solid #cbd8e3;
-  border-radius: 8px;
-  background: #ffffff;
-  color: #17202a;
-  line-height: 1.55;
-  padding: 12px;
-}
-
-.feedback-editor textarea:focus {
-  border-color: #176b87;
-  outline: 3px solid rgba(23, 107, 135, 0.14);
+.review-actions {
+  align-items: center;
+  justify-content: flex-start;
 }
 
 @media (max-width: 920px) {
@@ -859,7 +867,8 @@ h3 {
   .exercise-toolbar,
   .answer-header,
   .exercise-actions,
-  .agent-panel-header {
+  .review-feedback-header,
+  .review-actions {
     align-items: flex-start;
     flex-direction: column;
   }

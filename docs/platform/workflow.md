@@ -133,14 +133,16 @@ Cel:
 - przygotować sprawdzanie odpowiedzi przez agenta bez przepisywania całego materiału w UI.
 
 Zakres:
-- format kontekstu dla agenta,
-- endpoint lub eksport paczki sprawdzania,
-- jasne rozdzielenie: treść ćwiczenia, odpowiedź użytkownika, oczekiwany efekt, feedback.
+- segmentowe przyciski `Sprawdź` dla materiału, ćwiczeń, mini-projektu i sprawdzenia wiedzy,
+- format feedbacku zapisywany przy konkretnej odpowiedzi,
+- endpointy `review/*`, które na start mogą zwracać mock oceny,
+- jasne rozdzielenie: treść segmentu, odpowiedź użytkownika, kryteria, feedback.
 
 Kryteria ukończenia:
-- agent dostaje tylko potrzebny kontekst,
+- agent albo mock dostaje tylko kontekst jednego segmentu,
 - agent nie pokazuje odpowiedzi przed próbą użytkownika,
-- feedback jest zapisany przy odpowiedzi.
+- feedback jest zapisany przy odpowiedzi,
+- status ocenianego elementu przechodzi na `Rozwiązane` albo `Do powtórki`.
 
 ## Zasady pracy
 
