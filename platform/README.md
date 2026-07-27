@@ -18,6 +18,12 @@ Etap 4 zawiera:
 
 ## Backend
 
+Domyślny port backendu to `8000`. Przed startem sprawdź, czy nie działa już poprzednia instancja:
+
+```bash
+lsof -nP -iTCP:8000 -sTCP:LISTEN
+```
+
 ```bash
 cd platform/backend
 python3 -m venv .venv
@@ -54,6 +60,12 @@ http://127.0.0.1:8000/api/progress
 
 ## Frontend
 
+Domyślny port frontendu to `5173`. Przed startem sprawdź, czy nie działa już poprzednia instancja:
+
+```bash
+lsof -nP -iTCP:5173 -sTCP:LISTEN
+```
+
 W drugim terminalu:
 
 ```bash
@@ -68,10 +80,19 @@ Frontend będzie dostępny pod adresem pokazanym przez Vite, domyślnie:
 http://127.0.0.1:5173
 ```
 
-Jeśli backend działa na innym porcie, ustaw:
+Nie uruchamiaj frontendu na kolejnych portach zastępczych, jeśli `5173` jest zajęty. Najpierw zamknij poprzedni proces Vite, a potem uruchom frontend ponownie.
+
+Jeśli wyjątkowo backend działa na innym porcie, ustaw:
 
 ```bash
 VITE_API_BASE_URL=http://127.0.0.1:8001 npm run dev
+```
+
+Po zakończeniu pracy zamknij oba serwery i sprawdź, czy porty są wolne:
+
+```bash
+lsof -nP -iTCP:8000 -sTCP:LISTEN
+lsof -nP -iTCP:5173 -sTCP:LISTEN
 ```
 
 ## Zakres etapu 4

@@ -151,6 +151,26 @@ Kryteria ukończenia:
 5. Po każdej zmianie aplikacji uruchom minimalną weryfikację.
 6. Preferuj prosty kod i czytelne kontrakty zamiast frameworkowej magii.
 
+## Porty i sprzątanie procesów
+
+Stałe porty platformy:
+- backend: `127.0.0.1:8000`,
+- frontend: `127.0.0.1:5173`.
+
+Przed uruchomieniem lokalnych serwerów sprawdź:
+
+```bash
+lsof -nP -iTCP:8000 -sTCP:LISTEN
+lsof -nP -iTCP:5173 -sTCP:LISTEN
+```
+
+Jeśli port jest zajęty przez proces z katalogu `platform/backend` albo `platform/frontend`, zamknij ten proces i dopiero wtedy uruchom nową instancję. Nie traktuj portów `8001`, `8010`, `8020`, `5174`, `5180` ani `5181` jako domyślnego obejścia; pojawiły się jako skutek pozostawionych wcześniejszych uruchomień i nie powinny być utrwalane w workflow.
+
+Po zakończeniu pracy nad etapem:
+1. zatrzymaj backend i frontend uruchomione na potrzeby weryfikacji,
+2. sprawdź ponownie porty `8000` i `5173`,
+3. w podsumowaniu pracy napisz, czy procesy zostały zamknięte.
+
 ## Definicja gotowości zmiany
 
 Zmiana w platformie jest gotowa, jeśli:
@@ -159,3 +179,4 @@ Zmiana w platformie jest gotowa, jeśli:
 - nie zostały przypadkowo zmienione materiały w `modules/`,
 - dokumentacja uruchomienia jest aktualna,
 - parser treści nadal działa dla modułu 1.
+- procesy backendu i frontendu uruchomione podczas pracy zostały zatrzymane.

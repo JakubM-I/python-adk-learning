@@ -26,6 +26,23 @@ W zależności od aktywnego trybu pracy agent powinien dodatkowo uwzględnić od
 Jeśli zadanie dotyczy lokalnej platformy webowej do nauki, agent powinien dodatkowo uwzględnić dokumenty z katalogu `docs/platform/`.
 Instrukcje platformy są osobną warstwą projektu i nie zastępują zasad tworzenia modułów.
 
+## Lokalne serwery platformy
+
+Przy pracy nad lokalną platformą webową agent powinien używać stałych portów:
+- backend FastAPI: `http://127.0.0.1:8000`,
+- frontend Vite: `http://127.0.0.1:5173`.
+
+Przed uruchomieniem backendu lub frontendu agent powinien sprawdzić, czy porty są wolne:
+
+```bash
+lsof -nP -iTCP:8000 -sTCP:LISTEN
+lsof -nP -iTCP:5173 -sTCP:LISTEN
+```
+
+Jeśli port jest zajęty przez wcześniejszy proces z tego repo, należy zamknąć ten proces przed startem nowej instancji. Nie należy uruchamiać kolejnych instancji na losowych portach zastępczych, bo utrudnia to testowanie i zostawia wiszące procesy.
+
+Po zakończeniu pracy nad etapem platformy agent powinien zatrzymać uruchomione przez siebie procesy backendu i frontendu, a następnie ponownie sprawdzić porty. Etap nie jest domknięty, jeśli po pracy nadal działają procesy projektu na portach dev.
+
 ## Główne zasady pracy
 1. Repo jest źródłem prawdy.
 2. Wszystkie materiały mają być zapisywane w katalogu `modules/`.
