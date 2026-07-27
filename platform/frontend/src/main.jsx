@@ -12,6 +12,15 @@ const MODULE_PARTS = [
   { id: "summary", label: "Podsumowanie" },
 ];
 
+const EMPTY_PROGRESS = { modules: {} };
+const EMPTY_MODULE_PROGRESS = {
+  completed_parts: [],
+  current_exercise: null,
+  completed_exercises: [],
+  notes: "",
+  answers: {},
+};
+
 function escapeHtml(value) {
   return value
     .replaceAll("&", "&amp;")
@@ -176,8 +185,12 @@ function App() {
   const [selectedModuleId, setSelectedModuleId] = useState("");
   const [selectedPart, setSelectedPart] = useState("material");
   const [content, setContent] = useState(null);
+  const [progress, setProgress] = useState(EMPTY_PROGRESS);
+  const [notesDraft, setNotesDraft] = useState("");
   const [modulesError, setModulesError] = useState("");
   const [contentError, setContentError] = useState("");
+  const [progressError, setProgressError] = useState("");
+  const [progressStatus, setProgressStatus] = useState("Wczytywanie postepu");
   const [isLoadingModules, setIsLoadingModules] = useState(true);
   const [isLoadingContent, setIsLoadingContent] = useState(false);
 
@@ -211,6 +224,39 @@ function App() {
     }
 
     loadModules();
+
+    return () => {
+      isActive = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let isActive = true;
+
+    async function loadProgress() {
+      try {
+        const response = await fetch(`${API_BASE_URL}/api/progress`);
+
+        if (!response.ok) {
+          throw new Error(`Backend odpowiedzial statusem ${response.status}`);
+        }
+
+        const payload = await response.json();
+
+        if (isActive) {
+          setProgress(payload);
+          setProgressError("");
+          setProgressStatus("Postep wczytany");
+        }
+      } catch (caughtError) {
+        if (isActive) {
+          setProgressError(caughtError instanceof Error ? caughtError.message : "Nie udalo sie pobrac postepu.");
+          setProgressStatus("Postep niedostepny");
+        }
+      }
+    }
+
+    loadProgress();
 
     return () => {
       isActive = false;
@@ -262,10 +308,98 @@ function App() {
   const selectedModule = modules.find((module) => module.id === selectedModuleId);
   const availableParts = selectedModule?.parts ?? [];
   const partMeta = MODULE_PARTS.find((part) => part.id === selectedPart);
+  const selectedModuleProgress = getModuleProgress(progress, selectedModuleId);
+  const completedAvailableParts = availableParts.filter((part) =>
+    selectedModuleProgress.completed_parts.includes(part),
+  );
+  const progressPercent =
+    availableParts.length > 0 ? Math.round((completedAvailableParts.length / availableParts.length) * 100) : 0;
+  const isSelectedPartCompleted = selectedModuleProgress.completed_parts.includes(selectedPart);
+
+  useEffect(() => {
+    setNotesDraft(selectedModuleProgress.notes);
+  }, [selectedModuleId, selectedModuleProgress.notes]);
 
   function selectModule(moduleId) {
     setSelectedModuleId(moduleId);
     setSelectedPart("material");
+  }
+
+  async function saveProgress(nextProgress) {
+    setProgressStatus("Zapisywanie...");
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/progress`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(nextProgress),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Backend odpowiedzial statusem ${response.status}`);
+      }
+
+      const payload = await response.json();
+      setProgress(payload);
+      setProgressError("");
+      setProgressStatus("Zapisano");
+    } catch (caughtError) {
+      setProgressError(caughtError instanceof Error ? caughtError.message : "Nie udalo sie zapisac postepu.");
+      setProgressStatus("Blad zapisu");
+    }
+  }
+
+  function buildNextProgress(moduleId, updater) {
+    const currentModuleProgress = getModuleProgress(progress, moduleId);
+    const nextModuleProgress = updater(currentModuleProgress);
+
+    return {
+      ...progress,
+      modules: {
+        ...(progress.modules ?? {}),
+        [moduleId]: nextModuleProgress,
+      },
+    };
+  }
+
+  function toggleSelectedPartCompleted() {
+    if (!selectedModuleId) {
+      return;
+    }
+
+    const nextProgress = buildNextProgress(selectedModuleId, (currentModuleProgress) => {
+      const completedParts = new Set(currentModuleProgress.completed_parts);
+
+      if (completedParts.has(selectedPart)) {
+        completedParts.delete(selectedPart);
+      } else {
+        completedParts.add(selectedPart);
+      }
+
+      return {
+        ...currentModuleProgress,
+        completed_parts: Array.from(completedParts),
+      };
+    });
+
+    setProgress(nextProgress);
+    saveProgress(nextProgress);
+  }
+
+  function saveNotes() {
+    if (!selectedModuleId) {
+      return;
+    }
+
+    const nextProgress = buildNextProgress(selectedModuleId, (currentModuleProgress) => ({
+      ...currentModuleProgress,
+      notes: notesDraft,
+    }));
+
+    setProgress(nextProgress);
+    saveProgress(nextProgress);
   }
 
   return (
@@ -281,8 +415,8 @@ function App() {
           </div>
 
           <div className="module-list-header">
-            <span className="metric-label">Moduly w repo</span>
-            <strong>{isLoadingModules ? "..." : modules.length}</strong>
+            <span className="metric-label">Postep modulu</span>
+            <strong>{isLoadingModules ? "..." : `${progressPercent}%`}</strong>
           </div>
 
           {modulesError ? <p className="sidebar-error">{modulesError}</p> : null}
@@ -297,6 +431,7 @@ function App() {
               >
                 <span>Modul {module.number}</span>
                 <strong>{module.title}</strong>
+                <small>{getModuleCompletionLabel(module, progress)}</small>
               </button>
             ))}
           </nav>
@@ -305,20 +440,32 @@ function App() {
         <section className="content-panel">
           <header className="topbar">
             <div>
-              <p className="eyebrow">Etap 2</p>
+              <p className="eyebrow">Etap 3</p>
               <h2>{selectedModule?.title ?? "Wybierz modul"}</h2>
             </div>
-            <span className={modulesError || contentError ? "status-pill status-error" : "status-pill"}>
-              {modulesError || contentError ? "Wymaga uwagi" : "Czytnik gotowy"}
+            <span className={modulesError || contentError || progressError ? "status-pill status-error" : "status-pill"}>
+              {modulesError || contentError || progressError ? "Wymaga uwagi" : progressStatus}
             </span>
           </header>
 
           {selectedModule ? (
             <>
+              <section className="progress-panel" aria-label="Postep modulu">
+                <div className="progress-copy">
+                  <span className="metric-label">Ukonczone czesci</span>
+                  <strong>
+                    {completedAvailableParts.length} / {availableParts.length}
+                  </strong>
+                </div>
+                <div className="progress-track" aria-hidden="true">
+                  <span style={{ width: `${progressPercent}%` }} />
+                </div>
+              </section>
+
               <nav className="part-tabs" aria-label="Czesci modulu">
                 {MODULE_PARTS.map((part) => (
                   <button
-                    className={part.id === selectedPart ? "part-tab active" : "part-tab"}
+                    className={getPartTabClassName(part.id, selectedPart, selectedModuleProgress)}
                     disabled={!availableParts.includes(part.id)}
                     key={part.id}
                     onClick={() => setSelectedPart(part.id)}
@@ -335,12 +482,42 @@ function App() {
                     <p className="eyebrow">Plik Markdown</p>
                     <h3>{partMeta?.label ?? selectedPart}</h3>
                   </div>
-                  <span>{content?.filename ?? ""}</span>
+                  <div className="reader-actions">
+                    <label className="complete-toggle">
+                      <input
+                        checked={isSelectedPartCompleted}
+                        onChange={toggleSelectedPartCompleted}
+                        type="checkbox"
+                      />
+                      <span>Ukonczona</span>
+                    </label>
+                    <span>{content?.filename ?? ""}</span>
+                  </div>
                 </div>
 
                 {isLoadingContent ? <p className="empty-state">Wczytuje tresc modulu...</p> : null}
                 {contentError ? <p className="empty-state error-text">{contentError}</p> : null}
                 {!isLoadingContent && content?.markdown ? <MarkdownReader markdown={content.markdown} /> : null}
+              </section>
+
+              <section className="notes-panel" aria-label="Prywatne notatki">
+                <div className="notes-header">
+                  <div>
+                    <p className="eyebrow">Notatki prywatne</p>
+                    <h3>Do tego modulu</h3>
+                  </div>
+                  <button className="secondary-action" onClick={saveNotes} type="button">
+                    Zapisz notatki
+                  </button>
+                </div>
+                <textarea
+                  aria-label="Notatki do modulu"
+                  onBlur={saveNotes}
+                  onChange={(event) => setNotesDraft(event.target.value)}
+                  placeholder="Zapisz pytania, skojarzenia albo fragmenty, do ktorych chcesz wrocic."
+                  value={notesDraft}
+                />
+                {progressError ? <p className="error-text">{progressError}</p> : null}
               </section>
             </>
           ) : (
@@ -354,6 +531,38 @@ function App() {
       </section>
     </main>
   );
+}
+
+function getModuleProgress(progress, moduleId) {
+  if (!moduleId) {
+    return EMPTY_MODULE_PROGRESS;
+  }
+
+  return {
+    ...EMPTY_MODULE_PROGRESS,
+    ...(progress.modules?.[moduleId] ?? {}),
+  };
+}
+
+function getModuleCompletionLabel(module, progress) {
+  const moduleProgress = getModuleProgress(progress, module.id);
+  const completedParts = module.parts.filter((part) => moduleProgress.completed_parts.includes(part));
+
+  return `${completedParts.length}/${module.parts.length} czesci`;
+}
+
+function getPartTabClassName(partId, selectedPart, moduleProgress) {
+  const classNames = ["part-tab"];
+
+  if (partId === selectedPart) {
+    classNames.push("active");
+  }
+
+  if (moduleProgress.completed_parts.includes(partId)) {
+    classNames.push("completed");
+  }
+
+  return classNames.join(" ");
 }
 
 createRoot(document.getElementById("root")).render(<App />);

@@ -1,12 +1,17 @@
 from datetime import UTC, datetime
+import json
 from pathlib import Path
+from typing import Any
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel, Field
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 MODULES_DIR = PROJECT_ROOT / "modules"
+DATA_DIR = PROJECT_ROOT / "platform" / "data"
+PROGRESS_FILE = DATA_DIR / "progress.json"
 
 MODULE_PART_FILES = {
     "material": "module.md",
@@ -18,6 +23,18 @@ MODULE_PART_FILES = {
 PART_ALIASES = {
     "module": "material",
 }
+
+
+class ModuleProgress(BaseModel):
+    completed_parts: list[str] = Field(default_factory=list)
+    current_exercise: str | None = None
+    completed_exercises: list[str] = Field(default_factory=list)
+    notes: str = ""
+    answers: dict[str, str] = Field(default_factory=dict)
+
+
+class ProgressPayload(BaseModel):
+    modules: dict[str, ModuleProgress] = Field(default_factory=dict)
 
 
 app = FastAPI(
@@ -84,6 +101,31 @@ def normalize_part(part: str) -> str:
         raise HTTPException(status_code=404, detail="Module part not found")
 
     return normalized
+
+
+def load_progress() -> ProgressPayload:
+    if not PROGRESS_FILE.exists():
+        return ProgressPayload()
+
+    try:
+        raw_progress = json.loads(PROGRESS_FILE.read_text(encoding="utf-8"))
+        return ProgressPayload.model_validate(raw_progress)
+    except (json.JSONDecodeError, OSError, ValueError) as error:
+        raise HTTPException(status_code=500, detail="Progress data is unreadable") from error
+
+
+def save_progress(progress: ProgressPayload) -> None:
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    temporary_file = PROGRESS_FILE.with_suffix(".json.tmp")
+
+    try:
+        temporary_file.write_text(
+            json.dumps(progress.model_dump(), ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
+        temporary_file.replace(PROGRESS_FILE)
+    except OSError as error:
+        raise HTTPException(status_code=500, detail="Progress data could not be saved") from error
 
 
 def build_module_payload(module_path: Path) -> dict[str, str | int | list[str]]:
@@ -159,3 +201,14 @@ def get_module_content(module_id: str, part: str) -> dict[str, str]:
         "filename": filename,
         "markdown": markdown,
     }
+
+
+@app.get("/api/progress")
+def get_progress() -> dict[str, Any]:
+    return load_progress().model_dump()
+
+
+@app.put("/api/progress")
+def put_progress(progress: ProgressPayload) -> dict[str, Any]:
+    save_progress(progress)
+    return progress.model_dump()
