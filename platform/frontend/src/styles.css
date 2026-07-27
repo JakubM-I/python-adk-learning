@@ -559,6 +559,12 @@ h3 {
   color: #1d6b43;
 }
 
+.status-done {
+  border: 1px solid #b7d9c6;
+  background: #edf8f1;
+  color: #1d6b43;
+}
+
 .exercise-section,
 .answer-panel,
 .exercise-details {
@@ -604,6 +610,10 @@ h3 {
 
 .expected-effect {
   background: #fffdf6;
+}
+
+.knowledge-prompt {
+  background: #f8fbfc;
 }
 
 .answer-panel {
