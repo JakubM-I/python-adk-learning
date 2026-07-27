@@ -23,6 +23,8 @@ const EMPTY_MODULE_PROGRESS = {
   notes: "",
   answers: {},
   knowledge_check_answers: {},
+  exercise_feedback: {},
+  knowledge_check_feedback: {},
 };
 
 const EXERCISE_STATUS_LABELS = {
@@ -211,10 +213,14 @@ function App() {
   const [knowledgeCheckError, setKnowledgeCheckError] = useState("");
   const [progressError, setProgressError] = useState("");
   const [progressStatus, setProgressStatus] = useState("Wczytywanie postepu");
+  const [agentContext, setAgentContext] = useState(null);
+  const [agentStatus, setAgentStatus] = useState("");
+  const [agentError, setAgentError] = useState("");
   const [isLoadingModules, setIsLoadingModules] = useState(true);
   const [isLoadingContent, setIsLoadingContent] = useState(false);
   const [isLoadingExercises, setIsLoadingExercises] = useState(false);
   const [isLoadingKnowledgeCheck, setIsLoadingKnowledgeCheck] = useState(false);
+  const [isLoadingAgentContext, setIsLoadingAgentContext] = useState(false);
 
   useEffect(() => {
     let isActive = true;
@@ -439,6 +445,12 @@ function App() {
   const currentKnowledgeCheckAnswer = currentKnowledgeCheckItem
     ? selectedModuleProgress.knowledge_check_answers[currentKnowledgeCheckItem.id] ?? ""
     : "";
+  const currentExerciseFeedback = currentExercise
+    ? selectedModuleProgress.exercise_feedback[currentExercise.id] ?? ""
+    : "";
+  const currentKnowledgeCheckFeedback = currentKnowledgeCheckItem
+    ? selectedModuleProgress.knowledge_check_feedback[currentKnowledgeCheckItem.id] ?? ""
+    : "";
   const currentExerciseStatus = currentExercise
     ? selectedModuleProgress.exercise_statuses[currentExercise.id] ?? "draft"
     : "draft";
@@ -458,6 +470,12 @@ function App() {
   useEffect(() => {
     setNotesDraft(selectedModuleProgress.notes);
   }, [selectedModuleId, selectedModuleProgress.notes]);
+
+  useEffect(() => {
+    setAgentContext(null);
+    setAgentStatus("");
+    setAgentError("");
+  }, [selectedModuleId, selectedPart, currentExercise?.id, currentKnowledgeCheckItem?.id]);
 
   function selectModule(moduleId) {
     setSelectedModuleId(moduleId);
@@ -484,9 +502,11 @@ function App() {
       setProgress(payload);
       setProgressError("");
       setProgressStatus("Zapisano");
+      return payload;
     } catch (caughtError) {
       setProgressError(caughtError instanceof Error ? caughtError.message : "Nie udalo sie zapisac postepu.");
       setProgressStatus("Blad zapisu");
+      return null;
     }
   }
 
@@ -559,7 +579,7 @@ function App() {
 
   function saveExerciseAnswer(answer) {
     if (!selectedModuleId || !currentExercise) {
-      return;
+      return Promise.resolve(null);
     }
 
     const nextProgress = buildNextProgress(selectedModuleId, (currentModuleProgress) => ({
@@ -576,7 +596,7 @@ function App() {
     }));
 
     setProgress(nextProgress);
-    saveProgress(nextProgress);
+    return saveProgress(nextProgress);
   }
 
   function setExerciseStatus(status) {
@@ -626,7 +646,7 @@ function App() {
 
   function saveKnowledgeCheckAnswer(answer) {
     if (!selectedModuleId || !currentKnowledgeCheckItem) {
-      return;
+      return Promise.resolve(null);
     }
 
     const nextProgress = buildNextProgress(selectedModuleId, (currentModuleProgress) => ({
@@ -644,7 +664,7 @@ function App() {
     }));
 
     setProgress(nextProgress);
-    saveProgress(nextProgress);
+    return saveProgress(nextProgress);
   }
 
   function setKnowledgeCheckStatus(status) {
@@ -663,6 +683,93 @@ function App() {
 
     setProgress(nextProgress);
     saveProgress(nextProgress);
+  }
+
+  async function prepareExerciseAgentContext(answer) {
+    if (!selectedModuleId || !currentExercise) {
+      return;
+    }
+
+    await saveExerciseAnswer(answer);
+    await loadAgentContext(`modules/${selectedModuleId}/exercises/${currentExercise.id}/agent-context`);
+  }
+
+  async function prepareKnowledgeCheckAgentContext(answer) {
+    if (!selectedModuleId || !currentKnowledgeCheckItem) {
+      return;
+    }
+
+    await saveKnowledgeCheckAnswer(answer);
+    await loadAgentContext(`modules/${selectedModuleId}/knowledge-check/${currentKnowledgeCheckItem.id}/agent-context`);
+  }
+
+  async function loadAgentContext(path) {
+    setIsLoadingAgentContext(true);
+    setAgentStatus("Przygotowuje kontekst...");
+    setAgentError("");
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/${path}`);
+
+      if (!response.ok) {
+        throw new Error(`Backend odpowiedzial statusem ${response.status}`);
+      }
+
+      const payload = await response.json();
+      setAgentContext(payload);
+      setAgentStatus("Kontekst gotowy");
+    } catch (caughtError) {
+      setAgentContext(null);
+      setAgentError(caughtError instanceof Error ? caughtError.message : "Nie udalo sie przygotowac kontekstu.");
+      setAgentStatus("Blad integracji");
+    } finally {
+      setIsLoadingAgentContext(false);
+    }
+  }
+
+  async function saveExerciseFeedback(feedback) {
+    if (!selectedModuleId || !currentExercise) {
+      return;
+    }
+
+    await saveAgentFeedback(`modules/${selectedModuleId}/exercises/${currentExercise.id}/feedback`, feedback);
+  }
+
+  async function saveKnowledgeCheckFeedback(feedback) {
+    if (!selectedModuleId || !currentKnowledgeCheckItem) {
+      return;
+    }
+
+    await saveAgentFeedback(
+      `modules/${selectedModuleId}/knowledge-check/${currentKnowledgeCheckItem.id}/feedback`,
+      feedback,
+    );
+  }
+
+  async function saveAgentFeedback(path, feedback) {
+    setAgentStatus("Zapisuje feedback...");
+    setAgentError("");
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/${path}`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ feedback }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Backend odpowiedzial statusem ${response.status}`);
+      }
+
+      const payload = await response.json();
+      setProgress(payload);
+      setAgentStatus("Feedback zapisany");
+    } catch (caughtError) {
+      setAgentError(caughtError instanceof Error ? caughtError.message : "Nie udalo sie zapisac feedbacku.");
+      setAgentStatus("Blad zapisu feedbacku");
+    }
   }
 
   return (
@@ -703,7 +810,7 @@ function App() {
         <section className="content-panel">
           <header className="topbar">
             <div>
-              <p className="eyebrow">Etap 5</p>
+              <p className="eyebrow">Etap 6</p>
               <h2>{selectedModule?.title ?? "Wybierz modul"}</h2>
             </div>
             <span
@@ -794,8 +901,15 @@ function App() {
                     exercise={currentExercise}
                     exerciseCount={exercises.length}
                     onAnswerBlur={saveExerciseAnswer}
+                    onPrepareReview={prepareExerciseAgentContext}
+                    onSaveFeedback={saveExerciseFeedback}
                     onNavigate={selectExercise}
                     onStatusChange={setExerciseStatus}
+                    agentContext={agentContext}
+                    agentError={agentError}
+                    agentStatus={agentStatus}
+                    feedback={currentExerciseFeedback}
+                    isLoadingAgentContext={isLoadingAgentContext}
                     status={currentExerciseStatus}
                   />
                 ) : null}
@@ -810,8 +924,15 @@ function App() {
                     item={currentKnowledgeCheckItem}
                     itemCount={knowledgeCheckItems.length}
                     onAnswerBlur={saveKnowledgeCheckAnswer}
+                    onPrepareReview={prepareKnowledgeCheckAgentContext}
+                    onSaveFeedback={saveKnowledgeCheckFeedback}
                     onNavigate={selectKnowledgeCheckItem}
                     onStatusChange={setKnowledgeCheckStatus}
+                    agentContext={agentContext}
+                    agentError={agentError}
+                    agentStatus={agentStatus}
+                    feedback={currentKnowledgeCheckFeedback}
+                    isLoadingAgentContext={isLoadingAgentContext}
                     status={currentKnowledgeCheckStatus}
                   />
                 ) : null}
@@ -858,10 +979,17 @@ function App() {
 
 function ExerciseMode({
   answer,
+  agentContext,
+  agentError,
+  agentStatus,
   currentIndex,
   exercise,
   exerciseCount,
+  feedback,
+  isLoadingAgentContext,
   onAnswerBlur,
+  onPrepareReview,
+  onSaveFeedback,
   onNavigate,
   onStatusChange,
   status,
@@ -929,6 +1057,17 @@ function ExerciseMode({
         />
       </section>
 
+      <AgentReviewPanel
+        agentContext={agentContext}
+        agentError={agentError}
+        agentStatus={agentStatus}
+        canPrepare={answerDraft.trim().length > 0}
+        feedback={feedback}
+        isLoading={isLoadingAgentContext}
+        onPrepareReview={() => onPrepareReview(answerDraft)}
+        onSaveFeedback={onSaveFeedback}
+      />
+
       <details className="exercise-details expected-effect">
         <summary>Pokaz oczekiwany efekt</summary>
         <MarkdownReader markdown={exercise.expected_effect_markdown || "Brak osobnej sekcji oczekiwanego efektu."} />
@@ -959,11 +1098,18 @@ function ExerciseMode({
 
 function KnowledgeCheckMode({
   answer,
+  agentContext,
+  agentError,
+  agentStatus,
   completedCount,
   currentIndex,
+  feedback,
+  isLoadingAgentContext,
   item,
   itemCount,
   onAnswerBlur,
+  onPrepareReview,
+  onSaveFeedback,
   onNavigate,
   onStatusChange,
   status,
@@ -1020,6 +1166,17 @@ function KnowledgeCheckMode({
         />
       </section>
 
+      <AgentReviewPanel
+        agentContext={agentContext}
+        agentError={agentError}
+        agentStatus={agentStatus}
+        canPrepare={answerDraft.trim().length > 0}
+        feedback={feedback}
+        isLoading={isLoadingAgentContext}
+        onPrepareReview={() => onPrepareReview(answerDraft)}
+        onSaveFeedback={onSaveFeedback}
+      />
+
       <div className="exercise-actions">
         <button className="secondary-action" disabled={!canGoPrevious} onClick={() => onNavigate(currentIndex - 1)} type="button">
           Poprzednie
@@ -1040,6 +1197,68 @@ function KnowledgeCheckMode({
         </button>
       </div>
     </article>
+  );
+}
+
+function AgentReviewPanel({
+  agentContext,
+  agentError,
+  agentStatus,
+  canPrepare,
+  feedback,
+  isLoading,
+  onPrepareReview,
+  onSaveFeedback,
+}) {
+  const [feedbackDraft, setFeedbackDraft] = useState(feedback);
+
+  useEffect(() => {
+    setFeedbackDraft(feedback);
+  }, [feedback]);
+
+  const contextText = agentContext ? JSON.stringify(agentContext, null, 2) : "";
+
+  return (
+    <section className="agent-panel">
+      <div className="agent-panel-header">
+        <div>
+          <p className="eyebrow">Agent</p>
+          <h4>Kontekst i feedback</h4>
+        </div>
+        <button className="secondary-action" disabled={isLoading || !canPrepare} onClick={onPrepareReview} type="button">
+          {isLoading ? "Przygotowuje..." : "Przygotuj kontekst"}
+        </button>
+      </div>
+
+      <p className="agent-note">
+        Najpierw wpisz wlasna probe. Dopiero potem paczka doda tresc zadania, Twoja odpowiedz, kontekst modulu i kryteria oceny.
+      </p>
+
+      {agentStatus ? <p className="agent-status">{agentStatus}</p> : null}
+      {agentError ? <p className="error-text">{agentError}</p> : null}
+
+      {contextText ? (
+        <details className="agent-context">
+          <summary>Paczka dla agenta</summary>
+          <pre>
+            <code>{contextText}</code>
+          </pre>
+        </details>
+      ) : null}
+
+      <div className="feedback-editor">
+        <label htmlFor="agent-feedback">Feedback od agenta</label>
+        <textarea
+          id="agent-feedback"
+          onChange={(event) => setFeedbackDraft(event.target.value)}
+          placeholder="Wklej feedback albo dopisz notatke po rozmowie z agentem."
+          value={feedbackDraft}
+        />
+        <button className="primary-action" onClick={() => onSaveFeedback(feedbackDraft)} type="button">
+          Zapisz feedback
+        </button>
+      </div>
+    </section>
   );
 }
 

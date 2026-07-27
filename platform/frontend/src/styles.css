@@ -656,6 +656,95 @@ h3 {
   gap: 8px;
 }
 
+.agent-panel {
+  display: grid;
+  gap: 12px;
+  border: 1px solid #d7dee6;
+  border-radius: 8px;
+  background: #f8fafc;
+  padding: 16px;
+}
+
+.agent-panel-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.agent-panel-header h4 {
+  margin: 4px 0 0;
+  color: #17202a;
+  font-size: 1.1rem;
+}
+
+.agent-note,
+.agent-status {
+  margin: 0;
+  color: #526578;
+}
+
+.agent-status {
+  font-weight: 800;
+}
+
+.agent-context {
+  border: 1px solid #dbe3ea;
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 12px;
+}
+
+.agent-context summary {
+  cursor: pointer;
+  color: #25495a;
+  font-weight: 800;
+}
+
+.agent-context pre {
+  max-height: 360px;
+  overflow: auto;
+  margin: 12px 0 0;
+  border-radius: 8px;
+  background: #18232d;
+  color: #f2f7fb;
+  padding: 14px;
+}
+
+.agent-context code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  font-size: 0.86rem;
+  line-height: 1.55;
+}
+
+.feedback-editor {
+  display: grid;
+  gap: 10px;
+}
+
+.feedback-editor label {
+  color: #2f4050;
+  font-weight: 800;
+}
+
+.feedback-editor textarea {
+  display: block;
+  width: 100%;
+  min-height: 150px;
+  resize: vertical;
+  border: 1px solid #cbd8e3;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #17202a;
+  line-height: 1.55;
+  padding: 12px;
+}
+
+.feedback-editor textarea:focus {
+  border-color: #176b87;
+  outline: 3px solid rgba(23, 107, 135, 0.14);
+}
+
 @media (max-width: 920px) {
   .app-shell {
     padding: 12px;
@@ -695,7 +784,8 @@ h3 {
   .notes-header,
   .exercise-toolbar,
   .answer-header,
-  .exercise-actions {
+  .exercise-actions,
+  .agent-panel-header {
     align-items: flex-start;
     flex-direction: column;
   }
