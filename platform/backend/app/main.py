@@ -35,10 +35,16 @@ class ModuleProgress(BaseModel):
     notes: str = ""
     answers: dict[str, str] = Field(default_factory=dict)
     knowledge_check_answers: dict[str, str] = Field(default_factory=dict)
+    exercise_feedback: dict[str, str] = Field(default_factory=dict)
+    knowledge_check_feedback: dict[str, str] = Field(default_factory=dict)
 
 
 class ProgressPayload(BaseModel):
     modules: dict[str, ModuleProgress] = Field(default_factory=dict)
+
+
+class AgentFeedbackPayload(BaseModel):
+    feedback: str = ""
 
 
 app = FastAPI(
@@ -385,6 +391,190 @@ def build_module_payload(module_path: Path) -> dict[str, str | int | list[str]]:
     }
 
 
+def module_context_markdown(module_path: Path) -> str:
+    markdown = read_markdown_file(module_path / MODULE_PART_FILES["material"])
+    sections: list[str] = []
+    current_heading = ""
+    current_lines: list[str] = []
+    allowed_headings = {
+        "intuicja",
+        "wyjasnienie techniczne",
+        "typowe pulapki",
+        "dlaczego tak, a nie inaczej",
+        "kiedy uzywac, a kiedy nie",
+    }
+
+    def flush_section() -> None:
+        if current_heading and slugify_heading(current_heading) in allowed_headings:
+            body = "\n".join(current_lines).strip()
+            if body:
+                sections.append(f"## {current_heading}\n{body}")
+
+    for line in markdown.splitlines():
+        if line.startswith("## "):
+            flush_section()
+            current_heading = line.removeprefix("## ").strip()
+            current_lines = []
+            continue
+
+        if current_heading:
+            current_lines.append(line)
+
+    flush_section()
+
+    return "\n\n".join(sections)
+
+
+def get_module_progress(progress: ProgressPayload, module_id: str) -> ModuleProgress:
+    return progress.modules.get(module_id, ModuleProgress())
+
+
+def build_agent_instructions(review_type: str) -> str:
+    if review_type == "exercise":
+        return (
+            "Ocen odpowiedz ucznia po polsku. Najpierw sprawdz, czy probowal samodzielnie "
+            "rozwiazac zadanie. Nie pokazuj pelnego wzorcowego rozwiazania, chyba ze feedback "
+            "tego wymaga. Daj krotka diagnoze, 2-4 konkretne wskazowki i jedno pytanie "
+            "sprawdzajace na koniec."
+        )
+
+    return (
+        "Ocen odpowiedz ucznia po polsku. Skup sie na zrozumieniu, brakujacych elementach "
+        "i typowych nieporozumieniach. Nie przepisuj calego materialu. Daj zwiezly feedback "
+        "i jedno pytanie doprecyzowujace na koniec."
+    )
+
+
+def find_exercise(module_id: str, item_id: str) -> dict[str, str | int]:
+    module_path = module_path_for(module_id)
+    markdown = read_markdown_file(module_path / MODULE_PART_FILES["exercises"])
+
+    for exercise in parse_exercises_markdown(markdown):
+        if exercise["id"] == item_id:
+            return exercise
+
+    raise HTTPException(status_code=404, detail="Exercise not found")
+
+
+def find_knowledge_check_item(module_id: str, item_id: str) -> dict[str, str | int]:
+    module_path = module_path_for(module_id)
+    markdown = read_markdown_file(module_path / MODULE_PART_FILES["knowledge_check"])
+
+    for item in parse_knowledge_check_markdown(markdown):
+        if item["id"] == item_id:
+            return item
+
+    raise HTTPException(status_code=404, detail="Knowledge check item not found")
+
+
+def build_exercise_agent_context(module_id: str, exercise_id: str) -> dict[str, Any]:
+    module_path = module_path_for(module_id)
+    module_payload = build_module_payload(module_path)
+    progress = load_progress()
+    module_progress = get_module_progress(progress, module_id)
+    exercise = find_exercise(module_id, exercise_id)
+    student_answer = module_progress.answers.get(exercise_id, "")
+
+    if not student_answer.strip():
+        raise HTTPException(status_code=400, detail="Student answer is required before preparing agent context")
+
+    return {
+        "kind": "exercise_review",
+        "module": {
+            "id": module_payload["id"],
+            "number": module_payload["number"],
+            "title": module_payload["title"],
+        },
+        "item": {
+            "id": exercise["id"],
+            "number": exercise["number"],
+            "title": exercise["title"],
+            "level": exercise["level"],
+            "goal": exercise["goal"],
+            "description_markdown": exercise["description_markdown"],
+            "constraints_markdown": exercise["constraints_markdown"],
+            "expected_effect_markdown": exercise["expected_effect_markdown"],
+        },
+        "student_answer": student_answer,
+        "current_status": module_progress.exercise_statuses.get(exercise_id, "draft"),
+        "saved_feedback": module_progress.exercise_feedback.get(exercise_id, ""),
+        "module_context_markdown": module_context_markdown(module_path),
+        "agent_instructions": build_agent_instructions("exercise"),
+    }
+
+
+def build_knowledge_check_agent_context(module_id: str, item_id: str) -> dict[str, Any]:
+    module_path = module_path_for(module_id)
+    module_payload = build_module_payload(module_path)
+    progress = load_progress()
+    module_progress = get_module_progress(progress, module_id)
+    item = find_knowledge_check_item(module_id, item_id)
+    student_answer = module_progress.knowledge_check_answers.get(item_id, "")
+
+    if not student_answer.strip():
+        raise HTTPException(status_code=400, detail="Student answer is required before preparing agent context")
+
+    return {
+        "kind": "knowledge_check_review",
+        "module": {
+            "id": module_payload["id"],
+            "number": module_payload["number"],
+            "title": module_payload["title"],
+        },
+        "item": {
+            "id": item["id"],
+            "number": item["number"],
+            "category": item["category"],
+            "category_label": item["category_label"],
+            "prompt_markdown": item["prompt_markdown"],
+        },
+        "student_answer": student_answer,
+        "current_status": module_progress.knowledge_check_statuses.get(item_id, "draft"),
+        "saved_feedback": module_progress.knowledge_check_feedback.get(item_id, ""),
+        "module_context_markdown": module_context_markdown(module_path),
+        "agent_instructions": build_agent_instructions("knowledge_check"),
+    }
+
+
+def save_agent_feedback(module_id: str, item_id: str, review_type: str, feedback: str) -> dict[str, Any]:
+    module_path_for(module_id)
+    progress = load_progress()
+    module_progress = get_module_progress(progress, module_id)
+
+    if review_type == "exercise":
+        find_exercise(module_id, item_id)
+        next_module_progress = module_progress.model_copy(
+            update={
+                "exercise_feedback": {
+                    **module_progress.exercise_feedback,
+                    item_id: feedback,
+                },
+            }
+        )
+    else:
+        find_knowledge_check_item(module_id, item_id)
+        next_module_progress = module_progress.model_copy(
+            update={
+                "knowledge_check_feedback": {
+                    **module_progress.knowledge_check_feedback,
+                    item_id: feedback,
+                },
+            }
+        )
+
+    next_progress = progress.model_copy(
+        update={
+            "modules": {
+                **progress.modules,
+                module_id: next_module_progress,
+            },
+        }
+    )
+    save_progress(next_progress)
+
+    return next_progress.model_dump()
+
+
 @app.get("/api/health")
 def health_check() -> dict[str, str | int | bool]:
     module_count = 0
@@ -466,6 +656,34 @@ def get_module_knowledge_check(module_id: str) -> dict[str, str | list[dict[str,
         "filename": filename,
         "items": parse_knowledge_check_markdown(markdown),
     }
+
+
+@app.get("/api/modules/{module_id}/exercises/{exercise_id}/agent-context")
+def get_exercise_agent_context(module_id: str, exercise_id: str) -> dict[str, Any]:
+    return build_exercise_agent_context(module_id, exercise_id)
+
+
+@app.put("/api/modules/{module_id}/exercises/{exercise_id}/feedback")
+def put_exercise_feedback(
+    module_id: str,
+    exercise_id: str,
+    payload: AgentFeedbackPayload,
+) -> dict[str, Any]:
+    return save_agent_feedback(module_id, exercise_id, "exercise", payload.feedback)
+
+
+@app.get("/api/modules/{module_id}/knowledge-check/{item_id}/agent-context")
+def get_knowledge_check_agent_context(module_id: str, item_id: str) -> dict[str, Any]:
+    return build_knowledge_check_agent_context(module_id, item_id)
+
+
+@app.put("/api/modules/{module_id}/knowledge-check/{item_id}/feedback")
+def put_knowledge_check_feedback(
+    module_id: str,
+    item_id: str,
+    payload: AgentFeedbackPayload,
+) -> dict[str, Any]:
+    return save_agent_feedback(module_id, item_id, "knowledge_check", payload.feedback)
 
 
 @app.get("/api/progress")

@@ -2,7 +2,7 @@
 
 To jest aplikacja webowa do przerabiania modułów z katalogu `modules/` w przeglądarce.
 
-Etap 5 zawiera:
+Etap 6 zawiera:
 - backend FastAPI,
 - frontend React + Vite,
 - endpoint zdrowia,
@@ -18,6 +18,9 @@ Etap 5 zawiera:
 - parser `knowledge_check.md`,
 - tryb jednego pytania lub scenariusza na ekranie,
 - zapis odpowiedzi i statusu pytania sprawdzenia wiedzy.
+- endpointy przygotowania paczki kontekstu dla agenta,
+- panel agentowy w trybie cwiczen i sprawdzenia wiedzy,
+- zapis feedbacku agenta przy konkretnej odpowiedzi.
 
 ## Backend
 
@@ -54,12 +57,21 @@ http://127.0.0.1:8000/api/modules
 http://127.0.0.1:8000/api/modules/module-01-python-foundations/content/material
 http://127.0.0.1:8000/api/modules/module-01-python-foundations/exercises
 http://127.0.0.1:8000/api/modules/module-01-python-foundations/knowledge-check
+http://127.0.0.1:8000/api/modules/module-01-python-foundations/exercises/exercise-1/agent-context
+http://127.0.0.1:8000/api/modules/module-01-python-foundations/knowledge-check/knowledge-check-1/agent-context
 ```
 
 Endpointy postepu:
 
 ```text
 http://127.0.0.1:8000/api/progress
+```
+
+Endpointy feedbacku agenta:
+
+```text
+PUT http://127.0.0.1:8000/api/modules/module-01-python-foundations/exercises/exercise-1/feedback
+PUT http://127.0.0.1:8000/api/modules/module-01-python-foundations/knowledge-check/knowledge-check-1/feedback
 ```
 
 ## Frontend
@@ -99,9 +111,9 @@ lsof -nP -iTCP:8000 -sTCP:LISTEN
 lsof -nP -iTCP:5173 -sTCP:LISTEN
 ```
 
-## Zakres etapu 5
+## Zakres etapu 6
 
-Ten etap zawiera czytnik modulow z lokalnym postepem, trybem cwiczen i trybem sprawdzenia wiedzy:
+Ten etap zawiera czytnik modulow z lokalnym postepem, trybem cwiczen, trybem sprawdzenia wiedzy i punktem integracji z agentem:
 - wykrywanie folderow `modules/module-*`,
 - pobieranie metadanych modulu z `module.md`,
 - przelaczanie plikow `module.md`, `exercises.md`, `mini_project.md`, `knowledge_check.md`, `summary.md`,
@@ -120,10 +132,23 @@ Ten etap zawiera czytnik modulow z lokalnym postepem, trybem cwiczen i trybem sp
 - zapis odpowiedzi w `knowledge_check_answers`,
 - statusy `W trakcie`, `Do omowienia`, `Przerobione`,
 - licznik przerobionych pytan i przechodzenie poprzednie/nastepne.
+- przygotowanie paczki `agent-context` dla wybranego cwiczenia albo pytania,
+- rozdzielenie tresci zadania, odpowiedzi uzytkownika, oczekiwanego efektu i feedbacku,
+- zapis feedbacku w `exercise_feedback` albo `knowledge_check_feedback` w lokalnym `platform/data/progress.json`.
 
 Ten etap celowo nie zawiera jeszcze:
 - uruchamiania kodu Pythona,
-- automatycznego sprawdzania odpowiedzi,
-- integracji z agentem.
+- automatycznego wywolania zewnetrznego modelu,
+- przechowywania sekretow w kodzie albo w plikach sledzonych przez git.
 
-Te elementy są opisane w `docs/platform/workflow.md` jako kolejne etapy.
+## Sekrety i dane lokalne
+
+Aplikacja nie potrzebuje klucza API do przygotowania paczki dla agenta. Jesli w przyszlosci pojawi sie bezposrednie wywolanie modelu, sekret powinien byc czytany tylko po stronie backendu z lokalnego `.env` albo zmiennych srodowiskowych.
+
+Repo ignoruje:
+- `.env` i `.env.*`,
+- pliki kluczy `*.pem` i `*.key`,
+- lokalny postep `platform/data/*.json`,
+- `node_modules/`, `dist/` i `.venv/`.
+
+Nie zapisuj sekretow w `platform/frontend/src/`, w `vite.config.js`, w Markdownach modulow ani w `platform/data/progress.json`. Frontend powinien komunikowac sie z backendem, a backend powinien trzymac integracje wymagajace sekretow po swojej stronie.
