@@ -144,6 +144,25 @@ Kryteria ukończenia:
 - feedback jest zapisany przy odpowiedzi,
 - status ocenianego elementu przechodzi na `Rozwiązane` albo `Do powtórki`.
 
+## Etap 7: Kontrakt review context i adapter agenta
+
+Cel:
+- przygotować backend pod prawdziwe sprawdzanie przez agenta bez zmiany prostego flow w UI.
+
+Zakres:
+- wydzielenie modeli, parserów, zapisu postępu i logiki review z jednego dużego pliku backendu,
+- wspólny model `ReviewContext` dla materiału, ćwiczeń, mini-projektu i sprawdzenia wiedzy,
+- diagnostyczny endpoint `GET /api/modules/{module_id}/review-context/{segment}`,
+- `ReviewService`, który przyjmuje kontekst segmentu i zwraca feedback w obecnym formacie,
+- mockowy adapter jako wymienialna warstwa przed przyszłym podpięciem modelu.
+
+Kryteria ukończenia:
+- endpointy `POST review/*` działają przez `ReviewService`,
+- endpoint `review-context/{segment}` pokazuje tylko dane danego segmentu,
+- ćwiczenia i sprawdzenie wiedzy wysyłają do kontekstu tylko elementy oznaczone jako `Do sprawdzenia`,
+- UI nie musi znać paczki kontekstu i nadal używa obecnego flow `Sprawdź`,
+- backend nie wymaga sekretów ani zewnętrznego modelu.
+
 ## Zasady pracy
 
 1. Każdy etap ma być mały i możliwy do uruchomienia.

@@ -182,20 +182,32 @@ Na przykład `expected_effect` może być zwinięte albo dostępne dopiero po kl
 
 ## Integracja z agentem
 
-W pierwszym MVP agent nie musi być wbudowany w aplikację.
-Aplikacja ma przygotować dane tak, żeby później dało się je sprawdzać:
-- odpowiedź użytkownika,
-- treść ćwiczenia,
-- kontekst modułu,
-- kryteria oczekiwanego efektu.
+Frontend nie powinien znać szczegółów paczki dla agenta.
+Użytkownik pracuje przez proste przyciski `Sprawdź`, a backend buduje segmentowy `ReviewContext`.
+
+`ReviewContext` powinien zawierać:
+- `segment`,
+- `module`,
+- `source_context_markdown`,
+- `items`,
+- `review_instructions`,
+- `expected_response_schema`.
+
+Segmenty review:
+- `material`,
+- `mini_project`,
+- `exercises`,
+- `knowledge_check`.
 
 Docelowy przepływ:
-1. frontend wysyła odpowiedź,
-2. backend zapisuje ją lokalnie,
-3. agent dostaje kontekst do oceny,
-4. ocena wraca jako feedback.
+1. frontend zapisuje odpowiedź i wywołuje `POST review/*`,
+2. backend buduje `ReviewContext` tylko dla jednego segmentu,
+3. `ReviewService` przekazuje kontekst do adaptera oceny,
+4. adapter zwraca feedback w formacie `ReviewFeedback`,
+5. backend zapisuje feedback i aktualizuje statusy w `platform/data/progress.json`.
 
-To powinno być dodane dopiero po ustabilizowaniu pracy z ćwiczeniami.
+W Etapie 7 adapter pozostaje mockowy.
+Prawdziwy model powinien zostać podpięty później przez wymianę adaptera, bez zmiany UI i bez zmiany endpointów `review/*`.
 
 ## Zasady bezpieczeństwa
 

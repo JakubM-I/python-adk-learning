@@ -118,6 +118,8 @@ Minimalny obiekt feedbacku zawiera:
 - `checked_at`.
 
 Platforma sprawdza jeden segment naraz: materiał, ćwiczenia, mini-projekt albo sprawdzenie wiedzy.
+Backendowy `ReviewContext` powinien być budowany z istniejących Markdownów i lokalnych odpowiedzi użytkownika.
+Nie należy dodawać do modułów osobnych pól ani sekcji tylko po to, żeby zasilić agenta, dopóki obecny kontrakt nagłówków wystarcza.
 
 ## Metadane w przyszłości
 

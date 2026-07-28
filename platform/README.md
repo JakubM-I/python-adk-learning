@@ -2,7 +2,7 @@
 
 To jest aplikacja webowa do przerabiania modułów z katalogu `modules/` w przeglądarce.
 
-Etap 6 zawiera:
+Etap 7 zawiera:
 - backend FastAPI,
 - frontend React + Vite,
 - endpoint zdrowia,
@@ -18,11 +18,13 @@ Etap 6 zawiera:
 - parser `knowledge_check.md`,
 - tryb jednego pytania lub scenariusza na ekranie,
 - zapis odpowiedzi i statusu pytania sprawdzenia wiedzy.
-- endpointy przygotowania paczki kontekstu dla agenta,
-- panel agentowy w trybie cwiczen i sprawdzenia wiedzy,
-- zapis feedbacku agenta przy konkretnej odpowiedzi.
 - pole odpowiedzi na pytanie sprawdzajace w Materiale,
 - pole odpowiedzi na pytanie sprawdzajace i miejsce na rozwiazanie w Mini-projekcie.
+- segmentowe przyciski `Sprawdz` dla Materialu, Cwiczen, Mini-projektu i Sprawdzenia wiedzy,
+- wspolny kontrakt `ReviewContext` przygotowany pod przyszlego agenta,
+- diagnostyczny endpoint podgladu contextu review,
+- mockowy adapter oceny w backendowym `ReviewService`,
+- zapis feedbacku przy konkretnej odpowiedzi.
 
 ## Backend
 
@@ -74,6 +76,12 @@ POST http://127.0.0.1:8000/api/modules/module-01-python-foundations/review/mater
 POST http://127.0.0.1:8000/api/modules/module-01-python-foundations/review/mini-project
 POST http://127.0.0.1:8000/api/modules/module-01-python-foundations/review/exercises
 POST http://127.0.0.1:8000/api/modules/module-01-python-foundations/review/knowledge-check
+```
+
+Endpoint diagnostyczny paczki dla przyszlego agenta:
+
+```text
+GET http://127.0.0.1:8000/api/modules/module-01-python-foundations/review-context/exercises
 ```
 
 ## Frontend
@@ -139,6 +147,9 @@ Ten etap zawiera czytnik modulow z lokalnym postepem, trybem cwiczen, trybem spr
 - przyciski `Sprawdz` dla Materialu, Mini-projektu, Cwiczen i Sprawdzenia wiedzy,
 - mockowane endpointy `review/*`, ktore zapisuja feedback przy konkretnej odpowiedzi,
 - zapis feedbacku w `part_feedback`, `mini_project_feedback`, `exercise_feedback` i `knowledge_check_feedback`.
+- wydzielony backendowy kontrakt `ReviewContext`,
+- backendowy `ReviewService`, przez ktory przechodza wszystkie endpointy `review/*`,
+- diagnostyczny endpoint `review-context/{segment}` do podejrzenia paczki przekazywanej przyszlemu agentowi.
 
 Ten etap celowo nie zawiera jeszcze:
 - uruchamiania kodu Pythona,
