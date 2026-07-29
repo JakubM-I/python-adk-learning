@@ -133,14 +133,35 @@ Cel:
 - przygotować sprawdzanie odpowiedzi przez agenta bez przepisywania całego materiału w UI.
 
 Zakres:
-- format kontekstu dla agenta,
-- endpoint lub eksport paczki sprawdzania,
-- jasne rozdzielenie: treść ćwiczenia, odpowiedź użytkownika, oczekiwany efekt, feedback.
+- segmentowe przyciski `Sprawdź` dla materiału, ćwiczeń, mini-projektu i sprawdzenia wiedzy,
+- format feedbacku zapisywany przy konkretnej odpowiedzi,
+- endpointy `review/*`, które na start mogą zwracać mock oceny,
+- jasne rozdzielenie: treść segmentu, odpowiedź użytkownika, kryteria, feedback.
 
 Kryteria ukończenia:
-- agent dostaje tylko potrzebny kontekst,
+- agent albo mock dostaje tylko kontekst jednego segmentu,
 - agent nie pokazuje odpowiedzi przed próbą użytkownika,
-- feedback jest zapisany przy odpowiedzi.
+- feedback jest zapisany przy odpowiedzi,
+- status ocenianego elementu przechodzi na `Rozwiązane` albo `Do powtórki`.
+
+## Etap 7: Kontrakt review context i adapter agenta
+
+Cel:
+- przygotować backend pod prawdziwe sprawdzanie przez agenta bez zmiany prostego flow w UI.
+
+Zakres:
+- wydzielenie modeli, parserów, zapisu postępu i logiki review z jednego dużego pliku backendu,
+- wspólny model `ReviewContext` dla materiału, ćwiczeń, mini-projektu i sprawdzenia wiedzy,
+- diagnostyczny endpoint `GET /api/modules/{module_id}/review-context/{segment}`,
+- `ReviewService`, który przyjmuje kontekst segmentu i zwraca feedback w obecnym formacie,
+- mockowy adapter jako wymienialna warstwa przed przyszłym podpięciem modelu.
+
+Kryteria ukończenia:
+- endpointy `POST review/*` działają przez `ReviewService`,
+- endpoint `review-context/{segment}` pokazuje tylko dane danego segmentu,
+- ćwiczenia i sprawdzenie wiedzy wysyłają do kontekstu tylko elementy oznaczone jako `Do sprawdzenia`,
+- UI nie musi znać paczki kontekstu i nadal używa obecnego flow `Sprawdź`,
+- backend nie wymaga sekretów ani zewnętrznego modelu.
 
 ## Zasady pracy
 
