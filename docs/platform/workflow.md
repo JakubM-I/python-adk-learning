@@ -163,6 +163,70 @@ Kryteria ukończenia:
 - UI nie musi znać paczki kontekstu i nadal używa obecnego flow `Sprawdź`,
 - backend nie wymaga sekretów ani zewnętrznego modelu.
 
+## Etap 8: Structured Agent Review Adapter
+
+Cel:
+- dodać opcjonalny adapter OpenAI do istniejącego `ReviewService`,
+- utrzymać mock jako domyślne zachowanie lokalne,
+- wymusić twardy kontrakt segmentowego wyniku `ReviewResult`.
+
+Zakres:
+- modele `ReviewResult` i `ReviewResultItem`,
+- adaptery zwracające wynik dla całego segmentu, a nie pojedynczy feedback,
+- `OpenAIReviewAdapter` aktywowany przez `REVIEW_ADAPTER=openai`,
+- structured output przez JSON schema w Responses API,
+- walidacja kompletności `item_id` przed zapisem progressu,
+- zapis progressu dopiero po poprawnej odpowiedzi adaptera.
+
+Kryteria ukończenia:
+- `REVIEW_ADAPTER=mock` działa bez `OPENAI_API_KEY`,
+- `REVIEW_ADAPTER=openai` wymaga `OPENAI_API_KEY` tylko po stronie backendu,
+- błędy API, konfiguracji albo walidacji nie aktualizują `platform/data/progress.json`,
+- endpointy `POST review/*` i `GET review-context/{segment}` zachowują dotychczasowy kontrakt dla frontendu,
+- frontend nie przechowuje sekretów i nie zna szczegółów adaptera.
+
+## Etap 9: Provider Profiles for Review LLM
+
+Cel:
+- odwiązać review od jednego API i jednego modelu,
+- wybierać model przez lokalne profile providerów,
+- zachować mock jako domyślny tryb bez sekretów.
+
+Zakres:
+- śledzony plik `platform/backend/review_profiles.json` z bezpiecznymi przykładami,
+- ignorowany plik `platform/backend/review_profiles.local.json` na prywatne ustawienia,
+- override aktywnego profilu przez `REVIEW_PROFILE`,
+- wspólny `LLMReviewAdapter` i osobne klienty providerów,
+- profile dla OpenAI-compatible, LM Studio i Ollama,
+- read-only endpoint `GET /api/review-profiles` bez wartości sekretów.
+
+Kryteria ukończenia:
+- `mock` działa bez kluczy API,
+- OpenAI i LM Studio używają OpenAI-compatible chat completions ze structured output,
+- Ollama używa natywnego `/api/chat` z JSON schema w `format`,
+- brak sekretu, błąd API albo błędny `ReviewResult` nie aktualizują progressu,
+- frontend nie przechowuje ani nie wysyła sekretów.
+
+## Etap 10: Segment Review Prompts
+
+Cel:
+- oddzielić wybór providera/modelu od instrukcji rozmowy z modelem,
+- utrzymywać prompt review jako pliki Markdown per segment,
+- przyspieszyć lokalne modele przez wariant `compact`.
+
+Zakres:
+- katalog `platform/backend/review_prompts/`,
+- warianty `default` i `compact` dla `material`, `exercises`, `mini_project`, `knowledge_check`,
+- pole `prompt_variant` w profilu review,
+- lekki payload review zamiast pełnego dumpa `ReviewContext`,
+- metadata-only endpoint `GET /api/review-prompt-info/{segment}`.
+
+Kryteria ukończenia:
+- `ReviewContext.review_instructions` pochodzi z plików promptów,
+- LM Studio i Ollama używają wariantu `compact`,
+- endpoint diagnostyczny nie zwraca odpowiedzi ucznia ani pełnego promptu,
+- istnieją testy loadera promptów, wariantu profilu i lżejszego payloadu.
+
 ## Zasady pracy
 
 1. Każdy etap ma być mały i możliwy do uruchomienia.

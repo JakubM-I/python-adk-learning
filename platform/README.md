@@ -2,7 +2,7 @@
 
 To jest aplikacja webowa do przerabiania modułów z katalogu `modules/` w przeglądarce.
 
-Etap 7 zawiera:
+Etap 10 zawiera:
 - backend FastAPI,
 - frontend React + Vite,
 - endpoint zdrowia,
@@ -24,6 +24,13 @@ Etap 7 zawiera:
 - wspolny kontrakt `ReviewContext` przygotowany pod przyszlego agenta,
 - diagnostyczny endpoint podgladu contextu review,
 - mockowy adapter oceny w backendowym `ReviewService`,
+- profile providerów dla mocka, OpenAI-compatible API, LM Studio i Ollama,
+- opcjonalny adapter LLM ze structured output,
+- twardy wynik segmentowy `ReviewResult` walidowany przed zapisem progressu,
+- diagnostyczny endpoint aktywnego profilu review bez sekretów,
+- segmentowe prompty review w plikach Markdown,
+- warianty promptow `default` i `compact` wybierane przez profil modelu,
+- diagnostyczny endpoint promptu review bez odpowiedzi ucznia i bez tresci promptu,
 - zapis feedbacku przy konkretnej odpowiedzi.
 
 ## Backend
@@ -47,6 +54,73 @@ Backend będzie dostępny pod adresem:
 ```text
 http://127.0.0.1:8000
 ```
+
+### Konfiguracja review providerów
+
+Domyślnie backend używa profilu `mock` i nie wymaga żadnych sekretów. Profile są w:
+
+```text
+platform/backend/review_profiles.json
+```
+
+Ten plik jest śledzony przez git i powinien zawierać tylko bezpieczne przykłady konfiguracji. Prywatne ustawienia lokalne można zapisać w ignorowanym pliku:
+
+```text
+platform/backend/review_profiles.local.json
+```
+
+Aktywny profil można też nadpisać bez edycji plików:
+
+```bash
+REVIEW_PROFILE=lmstudio_local
+```
+
+Przykład lokalnego override:
+
+```json
+{
+  "active_profile": "ollama_local",
+  "profiles": {
+    "ollama_local": {
+      "provider": "ollama",
+      "model": "llama3.1",
+      "base_url": "http://127.0.0.1:11434",
+      "temperature": 0,
+      "prompt_variant": "compact"
+    }
+  }
+}
+```
+
+Przykład profilu wymagającego sekretu:
+
+```bash
+REVIEW_PROFILE=openai_gpt5
+OPENAI_API_KEY=sk-...
+```
+
+Sekret jest czytany z env var wskazanego w `api_key_env`. Brak klucza, błąd API albo odpowiedź niezgodna ze schematem `ReviewResult` przerywa review bez aktualizacji `platform/data/progress.json`.
+
+Frontend nie przechowuje sekretów. Nie ustawiaj kluczy API w `platform/frontend/`, w `VITE_*`, w plikach Markdown, w `platform/data/progress.json` ani w `review_profiles*.json`.
+
+### Instrukcje review per segment
+
+Prompt/instrukcje dla modelu są w plikach:
+
+```text
+platform/backend/review_prompts/
+```
+
+Każdy segment ma wariant `default` i `compact`, na przykład:
+
+```text
+material.default.md
+material.compact.md
+exercises.default.md
+exercises.compact.md
+```
+
+Profile lokalne, takie jak LM Studio i Ollama, powinny używać `prompt_variant: "compact"`. Ten wariant ogranicza długość feedbacku i zmniejsza payload wysyłany do modelu. Mocniejsze modele mogą używać `default`.
 
 Endpoint testowy:
 
@@ -82,6 +156,18 @@ Endpoint diagnostyczny paczki dla przyszlego agenta:
 
 ```text
 GET http://127.0.0.1:8000/api/modules/module-01-python-foundations/review-context/exercises
+```
+
+Endpoint diagnostyczny profili review bez sekretów:
+
+```text
+GET http://127.0.0.1:8000/api/review-profiles
+```
+
+Endpoint diagnostyczny promptu review bez odpowiedzi ucznia:
+
+```text
+GET http://127.0.0.1:8000/api/review-prompt-info/material
 ```
 
 ## Frontend
@@ -121,7 +207,7 @@ lsof -nP -iTCP:8000 -sTCP:LISTEN
 lsof -nP -iTCP:5173 -sTCP:LISTEN
 ```
 
-## Zakres etapu 6
+## Zakres etapów 6-10
 
 Ten etap zawiera czytnik modulow z lokalnym postepem, trybem cwiczen, trybem sprawdzenia wiedzy i punktem integracji z agentem:
 - wykrywanie folderow `modules/module-*`,
@@ -150,20 +236,32 @@ Ten etap zawiera czytnik modulow z lokalnym postepem, trybem cwiczen, trybem spr
 - wydzielony backendowy kontrakt `ReviewContext`,
 - backendowy `ReviewService`, przez ktory przechodza wszystkie endpointy `review/*`,
 - diagnostyczny endpoint `review-context/{segment}` do podejrzenia paczki przekazywanej przyszlemu agentowi.
+- segmentowy kontrakt `ReviewResult` z lista wynikow `ReviewResultItem`,
+- walidacje, ze adapter zwrocil wynik dla wszystkich i tylko tych `item_id`, ktore byly w `ReviewContext`,
+- profile providerow wybierane przez `review_profiles.json`, `review_profiles.local.json` albo `REVIEW_PROFILE`,
+- OpenAI-compatible chat completions dla OpenAI i LM Studio,
+- natywny endpoint `/api/chat` dla Ollama,
+- JSON schema structured output zamiast luznego parsowania tekstu.
+- pliki promptow review per segment i wariant,
+- lekki payload review dla lokalnych modeli,
+- endpoint diagnostyczny promptu bez prywatnych odpowiedzi.
 
-Ten etap celowo nie zawiera jeszcze:
+Te etapy celowo nie zawieraja jeszcze:
 - uruchamiania kodu Pythona,
-- automatycznego wywolania zewnetrznego modelu,
+- historii rozmowy ani pamieci agenta,
 - przechowywania sekretow w kodzie albo w plikach sledzonych przez git.
 
 ## Sekrety i dane lokalne
 
-Aplikacja nie potrzebuje klucza API do przygotowania paczki dla agenta. Jesli w przyszlosci pojawi sie bezposrednie wywolanie modelu, sekret powinien byc czytany tylko po stronie backendu z lokalnego `.env` albo zmiennych srodowiskowych.
+Aplikacja nie potrzebuje klucza API w trybie mockowym ani przy lokalnych profilach bez `api_key_env`. Jesli wlaczasz profil wymagajacy sekretu, sekret powinien byc czytany tylko po stronie backendu z lokalnego `.env` albo zmiennych srodowiskowych.
 
 Repo ignoruje:
 - `.env` i `.env.*`,
 - pliki kluczy `*.pem` i `*.key`,
 - lokalny postep `platform/data/*.json`,
+- lokalny override `platform/backend/review_profiles.local.json`,
 - `node_modules/`, `dist/` i `.venv/`.
 
-Nie zapisuj sekretow w `platform/frontend/src/`, w `vite.config.js`, w Markdownach modulow ani w `platform/data/progress.json`. Frontend powinien komunikowac sie z backendem, a backend powinien trzymac integracje wymagajace sekretow po swojej stronie.
+Nie zapisuj sekretow w `platform/frontend/src/`, w `vite.config.js`, w Markdownach modulow, w `platform/data/progress.json` ani w plikach profili review. Frontend powinien komunikowac sie z backendem, a backend powinien trzymac integracje wymagajace sekretow po swojej stronie.
+
+Pliki `platform/backend/review_prompts/*.md` sa sledzone przez git i nie powinny zawierac prywatnych odpowiedzi ucznia ani sekretow.

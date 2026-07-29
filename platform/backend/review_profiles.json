@@ -1,0 +1,31 @@
+{
+  "active_profile": "mock",
+  "profiles": {
+    "mock": {
+      "provider": "mock",
+      "model": "mock"
+    },
+    "openai_gpt5": {
+      "provider": "openai_compatible",
+      "model": "gpt-5",
+      "base_url": "https://api.openai.com/v1",
+      "api_key_env": "OPENAI_API_KEY",
+      "temperature": 0,
+      "prompt_variant": "default"
+    },
+    "lmstudio_local": {
+      "provider": "openai_compatible",
+      "model": "local-model",
+      "base_url": "http://127.0.0.1:1234/v1",
+      "temperature": 0,
+      "prompt_variant": "compact"
+    },
+    "ollama_local": {
+      "provider": "ollama",
+      "model": "llama3.1",
+      "base_url": "http://127.0.0.1:11434",
+      "temperature": 0,
+      "prompt_variant": "compact"
+    }
+  }
+}

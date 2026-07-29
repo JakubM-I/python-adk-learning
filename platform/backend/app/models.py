@@ -1,15 +1,32 @@
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field, field_validator
 
 
+ReviewStatus = Literal["solved", "needs_revision"]
+
+
 class ReviewFeedback(BaseModel):
-    status: str
+    status: ReviewStatus
     summary: str
     comments: list[str] = Field(default_factory=list)
     next_step: str = ""
     checked_at: str
+
+
+class ReviewResultItem(BaseModel):
+    item_id: str
+    status: ReviewStatus
+    summary: str
+    comments: list[str] = Field(default_factory=list)
+    next_step: str = ""
+
+
+class ReviewResult(BaseModel):
+    segment: str
+    results: list[ReviewResultItem]
+    overall_summary: str
 
 
 class ModuleProgress(BaseModel):

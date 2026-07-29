@@ -5,6 +5,9 @@ PROJECT_ROOT = Path(__file__).resolve().parents[3]
 MODULES_DIR = PROJECT_ROOT / "modules"
 DATA_DIR = PROJECT_ROOT / "platform" / "data"
 PROGRESS_FILE = DATA_DIR / "progress.json"
+REVIEW_PROFILES_FILE = PROJECT_ROOT / "platform" / "backend" / "review_profiles.json"
+REVIEW_PROFILES_LOCAL_FILE = PROJECT_ROOT / "platform" / "backend" / "review_profiles.local.json"
+REVIEW_PROMPTS_DIR = PROJECT_ROOT / "platform" / "backend" / "review_prompts"
 
 MODULE_PART_FILES = {
     "material": "module.md",

@@ -18,6 +18,8 @@ from .repository import (
     save_progress,
 )
 from .review import ReviewService, build_review_context
+from .review_profiles import review_profiles_payload
+from .review_prompts import review_prompt_info_payload
 
 
 app = FastAPI(
@@ -80,6 +82,16 @@ def get_module_knowledge_check(module_id: str) -> dict[str, str | list[dict[str,
 @app.get("/api/modules/{module_id}/review-context/{segment}")
 def get_review_context(module_id: str, segment: str) -> dict[str, Any]:
     return build_review_context(module_id, segment).model_dump()
+
+
+@app.get("/api/review-profiles")
+def get_review_profiles() -> dict[str, Any]:
+    return review_profiles_payload()
+
+
+@app.get("/api/review-prompt-info/{segment}")
+def get_review_prompt_info(segment: str) -> dict[str, Any]:
+    return review_prompt_info_payload(segment)
 
 
 @app.post("/api/modules/{module_id}/review/material")
