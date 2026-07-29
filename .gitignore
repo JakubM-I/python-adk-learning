@@ -18,3 +18,4 @@ shared/notes/*
 
 platform/data/*.json
 !platform/data/.gitkeep
+platform/backend/review_profiles.local.json

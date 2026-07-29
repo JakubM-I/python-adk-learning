@@ -5,7 +5,7 @@ from typing import Any, Protocol
 from fastapi import HTTPException
 from pydantic import ValidationError
 
-from .config import MODULE_PART_FILES, OPENAI_API_KEY, OPENAI_MODEL, REVIEW_ADAPTER, REVIEW_SEGMENT_ALIASES
+from .config import MODULE_PART_FILES, REVIEW_SEGMENT_ALIASES
 from .models import ModuleSummary, ProgressPayload, ReviewContext, ReviewContextItem, ReviewFeedback, ReviewResult, ReviewResultItem
 from .parsers import extract_markdown_section, parse_exercises_markdown, parse_knowledge_check_markdown
 from .repository import (
@@ -18,6 +18,7 @@ from .repository import (
     save_progress,
     set_module_progress,
 )
+from .review_profiles import ReviewProfile, load_review_profiles, require_profile_api_key
 
 
 EXPECTED_RESPONSE_SCHEMA = {
@@ -85,6 +86,14 @@ REVIEW_INSTRUCTIONS = {
         "elementach, mylnych skojarzeniach i jednym kolejnym kroku dla ucznia."
     ),
 }
+
+
+SYSTEM_REVIEW_PROMPT = (
+    "Jestes dydaktycznym agentem sprawdzajacym odpowiedzi w lokalnej platformie nauki "
+    "Pythona pod Google ADK. Oceniaj po polsku. Dawaj konkretne wskazowki, ale nie podawaj "
+    "pelnego rozwiazania, jesli wystarczy naprowadzenie. Dla odpowiedzi blednych, niepelnych "
+    "albo zbyt ogolnych ustaw status needs_revision. Zwroc wylacznie JSON zgodny ze schematem ReviewResult."
+)
 
 
 def normalize_review_segment(segment: str) -> str:
@@ -281,6 +290,11 @@ class ReviewAdapter(Protocol):
         pass
 
 
+class ReviewProviderClient(Protocol):
+    def complete_review_json(self, context: ReviewContext) -> str:
+        pass
+
+
 class MockReviewAdapter:
     def review(self, context: ReviewContext) -> ReviewResult:
         return ReviewResult(
@@ -316,10 +330,22 @@ class MockReviewAdapter:
         )
 
 
-class OpenAIReviewAdapter:
-    def __init__(self, api_key: str = OPENAI_API_KEY, model: str = OPENAI_MODEL) -> None:
-        if not api_key:
-            raise HTTPException(status_code=500, detail="OPENAI_API_KEY is required when REVIEW_ADAPTER=openai")
+class LLMReviewAdapter:
+    def __init__(self, client: ReviewProviderClient) -> None:
+        self.client = client
+
+    def review(self, context: ReviewContext) -> ReviewResult:
+        response_text = self.client.complete_review_json(context)
+
+        try:
+            return ReviewResult.model_validate(json.loads(response_text))
+        except (json.JSONDecodeError, ValidationError) as error:
+            raise HTTPException(status_code=502, detail="Review provider response did not match ReviewResult") from error
+
+
+class OpenAICompatibleReviewClient:
+    def __init__(self, profile: ReviewProfile) -> None:
+        api_key = require_profile_api_key(profile)
 
         try:
             from openai import APIError, OpenAI
@@ -327,57 +353,111 @@ class OpenAIReviewAdapter:
             raise HTTPException(status_code=500, detail="OpenAI package is not installed") from error
 
         self.api_error = APIError
-        self.client = OpenAI(api_key=api_key)
-        self.model = model
+        self.client = OpenAI(
+            api_key=api_key,
+            base_url=profile.base_url or None,
+        )
+        self.profile = profile
 
-    def review(self, context: ReviewContext) -> ReviewResult:
+    def complete_review_json(self, context: ReviewContext) -> str:
         try:
-            response = self.client.responses.create(
-                model=self.model,
-                input=[
-                    {
-                        "role": "system",
-                        "content": (
-                            "Jestes dydaktycznym agentem sprawdzajacym odpowiedzi w lokalnej platformie nauki "
-                            "Pythona pod Google ADK. Oceniaj po polsku. Dawaj konkretne wskazowki, ale nie podawaj "
-                            "pelnego rozwiazania, jesli wystarczy naprowadzenie. Dla odpowiedzi blednych, niepelnych "
-                            "albo zbyt ogolnych ustaw status needs_revision."
-                        ),
-                    },
-                    {
-                        "role": "user",
-                        "content": json.dumps(context.model_dump(), ensure_ascii=False),
-                    },
-                ],
-                text={
-                    "format": {
-                        "type": "json_schema",
+            response = self.client.chat.completions.create(
+                model=self.profile.model,
+                messages=review_messages(context),
+                temperature=self.profile.temperature,
+                response_format={
+                    "type": "json_schema",
+                    "json_schema": {
                         "name": "ReviewResult",
                         "description": "Segmentowy wynik sprawdzenia odpowiedzi ucznia.",
                         "schema": REVIEW_RESULT_JSON_SCHEMA,
                         "strict": True,
-                    }
+                    },
                 },
             )
         except self.api_error as error:
-            raise HTTPException(status_code=502, detail="OpenAI review request failed") from error
+            raise HTTPException(status_code=502, detail="OpenAI-compatible review request failed") from error
         except Exception as error:
-            raise HTTPException(status_code=502, detail="OpenAI review request failed") from error
+            raise HTTPException(status_code=502, detail="OpenAI-compatible review request failed") from error
 
         try:
-            return ReviewResult.model_validate(json.loads(response.output_text))
-        except (json.JSONDecodeError, ValidationError, AttributeError) as error:
-            raise HTTPException(status_code=502, detail="OpenAI review response did not match ReviewResult") from error
+            content = response.choices[0].message.content
+        except (AttributeError, IndexError) as error:
+            raise HTTPException(status_code=502, detail="OpenAI-compatible review response is empty") from error
+
+        if not content:
+            raise HTTPException(status_code=502, detail="OpenAI-compatible review response is empty")
+
+        return content
+
+
+class OllamaReviewClient:
+    def __init__(self, profile: ReviewProfile) -> None:
+        self.profile = profile
+
+    def complete_review_json(self, context: ReviewContext) -> str:
+        try:
+            import httpx
+        except ImportError as error:
+            raise HTTPException(status_code=500, detail="httpx package is not installed") from error
+
+        base_url = self.profile.base_url.rstrip("/") or "http://127.0.0.1:11434"
+        request_body = {
+            "model": self.profile.model,
+            "messages": review_messages(context),
+            "stream": False,
+            "format": REVIEW_RESULT_JSON_SCHEMA,
+            "options": {
+                "temperature": self.profile.temperature,
+            },
+        }
+
+        try:
+            response = httpx.post(f"{base_url}/api/chat", json=request_body, timeout=120)
+            response.raise_for_status()
+            raw_response = response.json()
+            content = raw_response["message"]["content"]
+        except (httpx.HTTPError, json.JSONDecodeError, KeyError, TypeError) as error:
+            raise HTTPException(status_code=502, detail="Ollama review request failed") from error
+
+        if not content:
+            raise HTTPException(status_code=502, detail="Ollama review response is empty")
+
+        return content
+
+
+def review_messages(context: ReviewContext) -> list[dict[str, str]]:
+    return [
+        {
+            "role": "system",
+            "content": SYSTEM_REVIEW_PROMPT,
+        },
+        {
+            "role": "user",
+            "content": (
+                "ReviewContext:\n"
+                f"{json.dumps(context.model_dump(), ensure_ascii=False)}\n\n"
+                "Wymagany JSON schema ReviewResult:\n"
+                f"{json.dumps(REVIEW_RESULT_JSON_SCHEMA, ensure_ascii=False)}"
+            ),
+        },
+    ]
 
 
 def create_review_adapter() -> ReviewAdapter:
-    if REVIEW_ADAPTER == "mock":
+    active_profile = load_review_profiles()
+    profile = active_profile.profile
+
+    if profile.provider == "mock":
         return MockReviewAdapter()
 
-    if REVIEW_ADAPTER == "openai":
-        return OpenAIReviewAdapter()
+    if profile.provider == "openai_compatible":
+        return LLMReviewAdapter(OpenAICompatibleReviewClient(profile))
 
-    raise HTTPException(status_code=500, detail=f"Unsupported REVIEW_ADAPTER: {REVIEW_ADAPTER}")
+    if profile.provider == "ollama":
+        return LLMReviewAdapter(OllamaReviewClient(profile))
+
+    raise HTTPException(status_code=500, detail=f"Unsupported review provider: {profile.provider}")
 
 
 class ReviewService:

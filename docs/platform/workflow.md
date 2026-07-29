@@ -185,6 +185,28 @@ Kryteria ukończenia:
 - endpointy `POST review/*` i `GET review-context/{segment}` zachowują dotychczasowy kontrakt dla frontendu,
 - frontend nie przechowuje sekretów i nie zna szczegółów adaptera.
 
+## Etap 9: Provider Profiles for Review LLM
+
+Cel:
+- odwiązać review od jednego API i jednego modelu,
+- wybierać model przez lokalne profile providerów,
+- zachować mock jako domyślny tryb bez sekretów.
+
+Zakres:
+- śledzony plik `platform/backend/review_profiles.json` z bezpiecznymi przykładami,
+- ignorowany plik `platform/backend/review_profiles.local.json` na prywatne ustawienia,
+- override aktywnego profilu przez `REVIEW_PROFILE`,
+- wspólny `LLMReviewAdapter` i osobne klienty providerów,
+- profile dla OpenAI-compatible, LM Studio i Ollama,
+- read-only endpoint `GET /api/review-profiles` bez wartości sekretów.
+
+Kryteria ukończenia:
+- `mock` działa bez kluczy API,
+- OpenAI i LM Studio używają OpenAI-compatible chat completions ze structured output,
+- Ollama używa natywnego `/api/chat` z JSON schema w `format`,
+- brak sekretu, błąd API albo błędny `ReviewResult` nie aktualizują progressu,
+- frontend nie przechowuje ani nie wysyła sekretów.
+
 ## Zasady pracy
 
 1. Każdy etap ma być mały i możliwy do uruchomienia.
