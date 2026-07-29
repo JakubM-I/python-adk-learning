@@ -10,6 +10,7 @@ from .config import REVIEW_PROFILES_FILE, REVIEW_PROFILES_LOCAL_FILE
 
 
 ReviewProvider = Literal["mock", "openai_compatible", "ollama"]
+PromptVariant = Literal["default", "compact"]
 
 
 class ReviewProfile(BaseModel):
@@ -18,6 +19,7 @@ class ReviewProfile(BaseModel):
     base_url: str = ""
     api_key_env: str = ""
     temperature: float = 0
+    prompt_variant: PromptVariant = "default"
 
 
 class ReviewProfilesConfig(BaseModel):
@@ -71,6 +73,7 @@ def review_profiles_payload(active_profile: ActiveReviewProfile | None = None) -
                 "model": profile.model,
                 "base_url": profile.base_url,
                 "temperature": profile.temperature,
+                "prompt_variant": profile.prompt_variant,
                 "requires_api_key": bool(profile.api_key_env),
                 "active": name == selected.name,
             }
@@ -106,12 +109,22 @@ def _read_config(path: Path, required: bool) -> dict[str, Any]:
 
 
 def _merge_config(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
+    base_profiles = base.get("profiles", {})
+    override_profiles = override.get("profiles", {})
+    merged_profiles = dict(base_profiles)
+
+    for name, profile_override in override_profiles.items():
+        if isinstance(merged_profiles.get(name), dict) and isinstance(profile_override, dict):
+            merged_profiles[name] = {
+                **merged_profiles[name],
+                **profile_override,
+            }
+        else:
+            merged_profiles[name] = profile_override
+
     merged = {
         **base,
-        "profiles": {
-            **base.get("profiles", {}),
-            **override.get("profiles", {}),
-        },
+        "profiles": merged_profiles,
     }
 
     if "active_profile" in override:

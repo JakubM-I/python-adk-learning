@@ -19,6 +19,7 @@ from .repository import (
     set_module_progress,
 )
 from .review_profiles import ReviewProfile, load_review_profiles, require_profile_api_key
+from .review_prompts import load_review_prompt, review_messages
 
 
 EXPECTED_RESPONSE_SCHEMA = {
@@ -66,36 +67,6 @@ REVIEW_RESULT_JSON_SCHEMA = {
 }
 
 
-REVIEW_INSTRUCTIONS = {
-    "material": (
-        "Ocen odpowiedz ucznia po polsku. Skup sie na tym, czy odpowiedz pokazuje "
-        "intuicje z materialu, rozumienie mechaniki i praktyczny sens w kontekscie ADK. "
-        "Nie przepisuj calej sekcji materialu."
-    ),
-    "mini_project": (
-        "Ocen rozwiazanie mini-projektu i odpowiedz na pytanie sprawdzajace po polsku. "
-        "Sprawdz, czy uczen pokazuje decyzje projektowe, ograniczenia i rozumienie przeplywu. "
-        "Nie pokazuj pelnego wzorcowego rozwiazania, jesli wystarczy wskazowka."
-    ),
-    "exercises": (
-        "Ocen kazde cwiczenie po polsku. Najpierw sprawdz samodzielna probe, potem "
-        "konkretnosc rozwiazania, typowe bledy i zgodnosc z oczekiwanym efektem."
-    ),
-    "knowledge_check": (
-        "Ocen odpowiedzi sprawdzenia wiedzy po polsku. Skup sie na zrozumieniu, brakujacych "
-        "elementach, mylnych skojarzeniach i jednym kolejnym kroku dla ucznia."
-    ),
-}
-
-
-SYSTEM_REVIEW_PROMPT = (
-    "Jestes dydaktycznym agentem sprawdzajacym odpowiedzi w lokalnej platformie nauki "
-    "Pythona pod Google ADK. Oceniaj po polsku. Dawaj konkretne wskazowki, ale nie podawaj "
-    "pelnego rozwiazania, jesli wystarczy naprowadzenie. Dla odpowiedzi blednych, niepelnych "
-    "albo zbyt ogolnych ustaw status needs_revision. Zwroc wylacznie JSON zgodny ze schematem ReviewResult."
-)
-
-
 def normalize_review_segment(segment: str) -> str:
     normalized = REVIEW_SEGMENT_ALIASES.get(segment)
 
@@ -135,6 +106,10 @@ def build_review_context(module_id: str, segment: str) -> ReviewContext:
     return build_knowledge_check_review_context(module_id)
 
 
+def review_instructions_for(segment: str) -> str:
+    return load_review_prompt(segment, "default").content
+
+
 def build_material_review_context(module_id: str) -> ReviewContext:
     module_path = module_path_for(module_id)
     markdown = read_markdown_file(module_path / MODULE_PART_FILES["material"])
@@ -156,7 +131,7 @@ def build_material_review_context(module_id: str) -> ReviewContext:
                 student_answer=answer,
             )
         ],
-        review_instructions=REVIEW_INSTRUCTIONS["material"],
+        review_instructions=review_instructions_for("material"),
         expected_response_schema=EXPECTED_RESPONSE_SCHEMA,
     )
 
@@ -191,7 +166,7 @@ def build_mini_project_review_context(module_id: str) -> ReviewContext:
                 metadata={"kind": "check_answer"},
             ),
         ],
-        review_instructions=REVIEW_INSTRUCTIONS["mini_project"],
+        review_instructions=review_instructions_for("mini_project"),
         expected_response_schema=EXPECTED_RESPONSE_SCHEMA,
     )
 
@@ -237,7 +212,7 @@ def build_exercises_review_context(module_id: str) -> ReviewContext:
         module=module_summary_for(module_id),
         source_context_markdown=module_context_markdown(module_path),
         items=items,
-        review_instructions=REVIEW_INSTRUCTIONS["exercises"],
+        review_instructions=review_instructions_for("exercises"),
         expected_response_schema=EXPECTED_RESPONSE_SCHEMA,
     )
 
@@ -280,7 +255,7 @@ def build_knowledge_check_review_context(module_id: str) -> ReviewContext:
         module=module_summary_for(module_id),
         source_context_markdown=module_context_markdown(module_path),
         items=items,
-        review_instructions=REVIEW_INSTRUCTIONS["knowledge_check"],
+        review_instructions=review_instructions_for("knowledge_check"),
         expected_response_schema=EXPECTED_RESPONSE_SCHEMA,
     )
 
@@ -363,7 +338,7 @@ class OpenAICompatibleReviewClient:
         try:
             response = self.client.chat.completions.create(
                 model=self.profile.model,
-                messages=review_messages(context),
+                messages=review_messages(context, self.profile, REVIEW_RESULT_JSON_SCHEMA),
                 temperature=self.profile.temperature,
                 response_format={
                     "type": "json_schema",
@@ -404,7 +379,7 @@ class OllamaReviewClient:
         base_url = self.profile.base_url.rstrip("/") or "http://127.0.0.1:11434"
         request_body = {
             "model": self.profile.model,
-            "messages": review_messages(context),
+            "messages": review_messages(context, self.profile, REVIEW_RESULT_JSON_SCHEMA),
             "stream": False,
             "format": REVIEW_RESULT_JSON_SCHEMA,
             "options": {
@@ -424,25 +399,6 @@ class OllamaReviewClient:
             raise HTTPException(status_code=502, detail="Ollama review response is empty")
 
         return content
-
-
-def review_messages(context: ReviewContext) -> list[dict[str, str]]:
-    return [
-        {
-            "role": "system",
-            "content": SYSTEM_REVIEW_PROMPT,
-        },
-        {
-            "role": "user",
-            "content": (
-                "ReviewContext:\n"
-                f"{json.dumps(context.model_dump(), ensure_ascii=False)}\n\n"
-                "Wymagany JSON schema ReviewResult:\n"
-                f"{json.dumps(REVIEW_RESULT_JSON_SCHEMA, ensure_ascii=False)}"
-            ),
-        },
-    ]
-
 
 def create_review_adapter() -> ReviewAdapter:
     active_profile = load_review_profiles()

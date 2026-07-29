@@ -207,6 +207,26 @@ Kryteria ukończenia:
 - brak sekretu, błąd API albo błędny `ReviewResult` nie aktualizują progressu,
 - frontend nie przechowuje ani nie wysyła sekretów.
 
+## Etap 10: Segment Review Prompts
+
+Cel:
+- oddzielić wybór providera/modelu od instrukcji rozmowy z modelem,
+- utrzymywać prompt review jako pliki Markdown per segment,
+- przyspieszyć lokalne modele przez wariant `compact`.
+
+Zakres:
+- katalog `platform/backend/review_prompts/`,
+- warianty `default` i `compact` dla `material`, `exercises`, `mini_project`, `knowledge_check`,
+- pole `prompt_variant` w profilu review,
+- lekki payload review zamiast pełnego dumpa `ReviewContext`,
+- metadata-only endpoint `GET /api/review-prompt-info/{segment}`.
+
+Kryteria ukończenia:
+- `ReviewContext.review_instructions` pochodzi z plików promptów,
+- LM Studio i Ollama używają wariantu `compact`,
+- endpoint diagnostyczny nie zwraca odpowiedzi ucznia ani pełnego promptu,
+- istnieją testy loadera promptów, wariantu profilu i lżejszego payloadu.
+
 ## Zasady pracy
 
 1. Każdy etap ma być mały i możliwy do uruchomienia.

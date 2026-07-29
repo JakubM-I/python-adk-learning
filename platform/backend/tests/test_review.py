@@ -13,6 +13,8 @@ from app.main import app
 from app.models import ModuleProgress, ModuleSummary, ProgressPayload, ReviewContext, ReviewContextItem, ReviewResult, ReviewResultItem
 from app.review import MockReviewAdapter, OllamaReviewClient, OpenAICompatibleReviewClient, ReviewService, create_review_adapter
 from app.review_profiles import ActiveReviewProfile, ReviewProfile, load_review_profiles, require_profile_api_key, review_profiles_payload
+from app.review_prompts import build_review_payload, load_review_prompt, review_messages
+from app.review import REVIEW_RESULT_JSON_SCHEMA
 
 
 MODULE_ID = "module-01-python-foundations"
@@ -324,10 +326,7 @@ class ReviewProfilesTest(unittest.TestCase):
                     "active_profile": "ollama_local",
                     "profiles": {
                         "openai_gpt5": {
-                            "provider": "openai_compatible",
                             "model": "gpt-5-mini",
-                            "base_url": "https://api.openai.com/v1",
-                            "api_key_env": "OPENAI_API_KEY",
                         },
                         "ollama_local": {
                             "provider": "ollama",
@@ -344,6 +343,7 @@ class ReviewProfilesTest(unittest.TestCase):
 
         self.assertEqual(active_profile.name, "ollama_local")
         self.assertEqual(active_profile.profiles["openai_gpt5"].model, "gpt-5-mini")
+        self.assertEqual(active_profile.profiles["openai_gpt5"].api_key_env, "OPENAI_API_KEY")
         self.assertIn("mock", active_profile.profiles)
 
     def test_profiles_payload_does_not_expose_api_key_env_name(self) -> None:
@@ -365,6 +365,74 @@ class ReviewProfilesEndpointTest(unittest.TestCase):
         self.assertIn("active_profile", payload)
         self.assertIn("profiles", payload)
         self.assertNotIn("OPENAI_API_KEY", json.dumps(payload))
+
+
+class ReviewPromptsTest(unittest.TestCase):
+    def test_loader_uses_default_prompt_variant(self) -> None:
+        prompt = load_review_prompt("material", "default")
+
+        self.assertEqual(prompt.segment, "material")
+        self.assertEqual(prompt.variant, "default")
+        self.assertEqual(prompt.filename, "material.default.md")
+        self.assertIn("Material Review Prompt", prompt.content)
+
+    def test_loader_uses_compact_prompt_variant(self) -> None:
+        prompt = load_review_prompt("material", "compact")
+
+        self.assertEqual(prompt.variant, "compact")
+        self.assertEqual(prompt.filename, "material.compact.md")
+        self.assertIn("Compact", prompt.content)
+
+    def test_missing_prompt_file_raises_configuration_error(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            with self.assertRaises(HTTPException) as context:
+                load_review_prompt("material", "default", prompts_dir=Path(temp_dir))
+
+        self.assertEqual(context.exception.status_code, 500)
+        self.assertIn("Review prompt not found", context.exception.detail)
+
+    def test_review_messages_use_profile_prompt_variant(self) -> None:
+        profile = ReviewProfile(provider="mock", model="mock", prompt_variant="compact")
+        messages = review_messages(self.review_context(), profile, REVIEW_RESULT_JSON_SCHEMA)
+
+        self.assertIn("Material Review Prompt Compact", messages[0]["content"])
+        self.assertIn("Review payload", messages[1]["content"])
+
+    def test_compact_payload_is_smaller_than_full_review_context_dump(self) -> None:
+        context = self.review_context()
+        context.source_context_markdown = "abc " * 2000
+        profile = ReviewProfile(provider="mock", model="mock", prompt_variant="compact")
+        messages = review_messages(context, profile, REVIEW_RESULT_JSON_SCHEMA)
+        full_dump = json.dumps(context.model_dump(), ensure_ascii=False)
+
+        self.assertLess(len(messages[1]["content"]), len(full_dump))
+
+    def test_review_prompt_info_endpoint_does_not_expose_student_answer(self) -> None:
+        response = TestClient(app).get("/api/review-prompt-info/material")
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        serialized = json.dumps(payload)
+        self.assertFalse(payload["contains_private_data"])
+        self.assertFalse(payload["contains_prompt_content"])
+        self.assertNotIn("student_answer", serialized)
+
+    def review_context(self) -> ReviewContext:
+        return ReviewContext(
+            segment="material",
+            module=ModuleSummary(id=MODULE_ID, number=1, title="Python foundations"),
+            source_context_markdown="## Intuicja\nPrzyklad.",
+            items=[
+                ReviewContextItem(
+                    id="material",
+                    title="Pytanie sprawdzajace",
+                    prompt_markdown="Wyjasnij sens.",
+                    student_answer="Rozumiem sens i potrafie podac maly przyklad.",
+                )
+            ],
+            review_instructions="Ocen po polsku.",
+            expected_response_schema={},
+        )
 
 
 if __name__ == "__main__":

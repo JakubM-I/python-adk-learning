@@ -2,7 +2,7 @@
 
 To jest aplikacja webowa do przerabiania modułów z katalogu `modules/` w przeglądarce.
 
-Etap 9 zawiera:
+Etap 10 zawiera:
 - backend FastAPI,
 - frontend React + Vite,
 - endpoint zdrowia,
@@ -28,6 +28,9 @@ Etap 9 zawiera:
 - opcjonalny adapter LLM ze structured output,
 - twardy wynik segmentowy `ReviewResult` walidowany przed zapisem progressu,
 - diagnostyczny endpoint aktywnego profilu review bez sekretów,
+- segmentowe prompty review w plikach Markdown,
+- warianty promptow `default` i `compact` wybierane przez profil modelu,
+- diagnostyczny endpoint promptu review bez odpowiedzi ucznia i bez tresci promptu,
 - zapis feedbacku przy konkretnej odpowiedzi.
 
 ## Backend
@@ -82,7 +85,8 @@ Przykład lokalnego override:
       "provider": "ollama",
       "model": "llama3.1",
       "base_url": "http://127.0.0.1:11434",
-      "temperature": 0
+      "temperature": 0,
+      "prompt_variant": "compact"
     }
   }
 }
@@ -98,6 +102,25 @@ OPENAI_API_KEY=sk-...
 Sekret jest czytany z env var wskazanego w `api_key_env`. Brak klucza, błąd API albo odpowiedź niezgodna ze schematem `ReviewResult` przerywa review bez aktualizacji `platform/data/progress.json`.
 
 Frontend nie przechowuje sekretów. Nie ustawiaj kluczy API w `platform/frontend/`, w `VITE_*`, w plikach Markdown, w `platform/data/progress.json` ani w `review_profiles*.json`.
+
+### Instrukcje review per segment
+
+Prompt/instrukcje dla modelu są w plikach:
+
+```text
+platform/backend/review_prompts/
+```
+
+Każdy segment ma wariant `default` i `compact`, na przykład:
+
+```text
+material.default.md
+material.compact.md
+exercises.default.md
+exercises.compact.md
+```
+
+Profile lokalne, takie jak LM Studio i Ollama, powinny używać `prompt_variant: "compact"`. Ten wariant ogranicza długość feedbacku i zmniejsza payload wysyłany do modelu. Mocniejsze modele mogą używać `default`.
 
 Endpoint testowy:
 
@@ -141,6 +164,12 @@ Endpoint diagnostyczny profili review bez sekretów:
 GET http://127.0.0.1:8000/api/review-profiles
 ```
 
+Endpoint diagnostyczny promptu review bez odpowiedzi ucznia:
+
+```text
+GET http://127.0.0.1:8000/api/review-prompt-info/material
+```
+
 ## Frontend
 
 Domyślny port frontendu to `5173`. Przed startem sprawdź, czy nie działa już poprzednia instancja:
@@ -178,7 +207,7 @@ lsof -nP -iTCP:8000 -sTCP:LISTEN
 lsof -nP -iTCP:5173 -sTCP:LISTEN
 ```
 
-## Zakres etapów 6-9
+## Zakres etapów 6-10
 
 Ten etap zawiera czytnik modulow z lokalnym postepem, trybem cwiczen, trybem sprawdzenia wiedzy i punktem integracji z agentem:
 - wykrywanie folderow `modules/module-*`,
@@ -213,6 +242,9 @@ Ten etap zawiera czytnik modulow z lokalnym postepem, trybem cwiczen, trybem spr
 - OpenAI-compatible chat completions dla OpenAI i LM Studio,
 - natywny endpoint `/api/chat` dla Ollama,
 - JSON schema structured output zamiast luznego parsowania tekstu.
+- pliki promptow review per segment i wariant,
+- lekki payload review dla lokalnych modeli,
+- endpoint diagnostyczny promptu bez prywatnych odpowiedzi.
 
 Te etapy celowo nie zawieraja jeszcze:
 - uruchamiania kodu Pythona,
@@ -231,3 +263,5 @@ Repo ignoruje:
 - `node_modules/`, `dist/` i `.venv/`.
 
 Nie zapisuj sekretow w `platform/frontend/src/`, w `vite.config.js`, w Markdownach modulow, w `platform/data/progress.json` ani w plikach profili review. Frontend powinien komunikowac sie z backendem, a backend powinien trzymac integracje wymagajace sekretow po swojej stronie.
+
+Pliki `platform/backend/review_prompts/*.md` sa sledzone przez git i nie powinny zawierac prywatnych odpowiedzi ucznia ani sekretow.

@@ -19,6 +19,7 @@ from .repository import (
 )
 from .review import ReviewService, build_review_context
 from .review_profiles import review_profiles_payload
+from .review_prompts import review_prompt_info_payload
 
 
 app = FastAPI(
@@ -86,6 +87,11 @@ def get_review_context(module_id: str, segment: str) -> dict[str, Any]:
 @app.get("/api/review-profiles")
 def get_review_profiles() -> dict[str, Any]:
     return review_profiles_payload()
+
+
+@app.get("/api/review-prompt-info/{segment}")
+def get_review_prompt_info(segment: str) -> dict[str, Any]:
+    return review_prompt_info_payload(segment)
 
 
 @app.post("/api/modules/{module_id}/review/material")
