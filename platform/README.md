@@ -2,7 +2,7 @@
 
 To jest aplikacja webowa do przerabiania modułów z katalogu `modules/` w przeglądarce.
 
-Etap 7 zawiera:
+Etap 8 zawiera:
 - backend FastAPI,
 - frontend React + Vite,
 - endpoint zdrowia,
@@ -24,6 +24,8 @@ Etap 7 zawiera:
 - wspolny kontrakt `ReviewContext` przygotowany pod przyszlego agenta,
 - diagnostyczny endpoint podgladu contextu review,
 - mockowy adapter oceny w backendowym `ReviewService`,
+- opcjonalny adapter OpenAI z Responses API i structured output,
+- twardy wynik segmentowy `ReviewResult` walidowany przed zapisem progressu,
 - zapis feedbacku przy konkretnej odpowiedzi.
 
 ## Backend
@@ -47,6 +49,26 @@ Backend będzie dostępny pod adresem:
 ```text
 http://127.0.0.1:8000
 ```
+
+### Konfiguracja review adaptera
+
+Domyślnie backend używa mocka i nie wymaga żadnych sekretów:
+
+```bash
+REVIEW_ADAPTER=mock
+```
+
+Opcjonalny prawdziwy adapter OpenAI można włączyć tylko po stronie backendu:
+
+```bash
+REVIEW_ADAPTER=openai
+OPENAI_API_KEY=sk-...
+OPENAI_MODEL=gpt-5
+```
+
+`OPENAI_MODEL` jest opcjonalny i domyślnie ma wartość `gpt-5`. `OPENAI_API_KEY` jest wymagany dopiero wtedy, gdy `REVIEW_ADAPTER=openai`. Brak klucza, błąd API albo odpowiedź niezgodna ze schematem `ReviewResult` przerywa review bez aktualizacji `platform/data/progress.json`.
+
+Frontend nie przechowuje sekretów. Nie ustawiaj `OPENAI_API_KEY` w `platform/frontend/`, w `VITE_*`, w plikach Markdown ani w `platform/data/progress.json`.
 
 Endpoint testowy:
 
@@ -121,7 +143,7 @@ lsof -nP -iTCP:8000 -sTCP:LISTEN
 lsof -nP -iTCP:5173 -sTCP:LISTEN
 ```
 
-## Zakres etapu 6
+## Zakres etapów 6-8
 
 Ten etap zawiera czytnik modulow z lokalnym postepem, trybem cwiczen, trybem sprawdzenia wiedzy i punktem integracji z agentem:
 - wykrywanie folderow `modules/module-*`,
@@ -150,15 +172,19 @@ Ten etap zawiera czytnik modulow z lokalnym postepem, trybem cwiczen, trybem spr
 - wydzielony backendowy kontrakt `ReviewContext`,
 - backendowy `ReviewService`, przez ktory przechodza wszystkie endpointy `review/*`,
 - diagnostyczny endpoint `review-context/{segment}` do podejrzenia paczki przekazywanej przyszlemu agentowi.
+- segmentowy kontrakt `ReviewResult` z lista wynikow `ReviewResultItem`,
+- walidacje, ze adapter zwrocil wynik dla wszystkich i tylko tych `item_id`, ktore byly w `ReviewContext`,
+- opcjonalny `OpenAIReviewAdapter` aktywowany przez `REVIEW_ADAPTER=openai`,
+- Responses API z JSON schema structured output zamiast luznego parsowania tekstu.
 
-Ten etap celowo nie zawiera jeszcze:
+Te etapy celowo nie zawieraja jeszcze:
 - uruchamiania kodu Pythona,
-- automatycznego wywolania zewnetrznego modelu,
+- historii rozmowy ani pamieci agenta,
 - przechowywania sekretow w kodzie albo w plikach sledzonych przez git.
 
 ## Sekrety i dane lokalne
 
-Aplikacja nie potrzebuje klucza API do przygotowania paczki dla agenta. Jesli w przyszlosci pojawi sie bezposrednie wywolanie modelu, sekret powinien byc czytany tylko po stronie backendu z lokalnego `.env` albo zmiennych srodowiskowych.
+Aplikacja nie potrzebuje klucza API w trybie mockowym. Jesli wlaczasz bezposrednie wywolanie modelu przez `REVIEW_ADAPTER=openai`, sekret powinien byc czytany tylko po stronie backendu z lokalnego `.env` albo zmiennych srodowiskowych.
 
 Repo ignoruje:
 - `.env` i `.env.*`,

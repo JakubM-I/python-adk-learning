@@ -163,6 +163,28 @@ Kryteria ukończenia:
 - UI nie musi znać paczki kontekstu i nadal używa obecnego flow `Sprawdź`,
 - backend nie wymaga sekretów ani zewnętrznego modelu.
 
+## Etap 8: Structured Agent Review Adapter
+
+Cel:
+- dodać opcjonalny adapter OpenAI do istniejącego `ReviewService`,
+- utrzymać mock jako domyślne zachowanie lokalne,
+- wymusić twardy kontrakt segmentowego wyniku `ReviewResult`.
+
+Zakres:
+- modele `ReviewResult` i `ReviewResultItem`,
+- adaptery zwracające wynik dla całego segmentu, a nie pojedynczy feedback,
+- `OpenAIReviewAdapter` aktywowany przez `REVIEW_ADAPTER=openai`,
+- structured output przez JSON schema w Responses API,
+- walidacja kompletności `item_id` przed zapisem progressu,
+- zapis progressu dopiero po poprawnej odpowiedzi adaptera.
+
+Kryteria ukończenia:
+- `REVIEW_ADAPTER=mock` działa bez `OPENAI_API_KEY`,
+- `REVIEW_ADAPTER=openai` wymaga `OPENAI_API_KEY` tylko po stronie backendu,
+- błędy API, konfiguracji albo walidacji nie aktualizują `platform/data/progress.json`,
+- endpointy `POST review/*` i `GET review-context/{segment}` zachowują dotychczasowy kontrakt dla frontendu,
+- frontend nie przechowuje sekretów i nie zna szczegółów adaptera.
+
 ## Zasady pracy
 
 1. Każdy etap ma być mały i możliwy do uruchomienia.

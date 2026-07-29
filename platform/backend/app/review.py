@@ -1,10 +1,12 @@
+import json
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, Protocol
 
 from fastapi import HTTPException
+from pydantic import ValidationError
 
-from .config import MODULE_PART_FILES, REVIEW_SEGMENT_ALIASES
-from .models import ModuleSummary, ProgressPayload, ReviewContext, ReviewContextItem, ReviewFeedback
+from .config import MODULE_PART_FILES, OPENAI_API_KEY, OPENAI_MODEL, REVIEW_ADAPTER, REVIEW_SEGMENT_ALIASES
+from .models import ModuleSummary, ProgressPayload, ReviewContext, ReviewContextItem, ReviewFeedback, ReviewResult, ReviewResultItem
 from .parsers import extract_markdown_section, parse_exercises_markdown, parse_knowledge_check_markdown
 from .repository import (
     build_module_payload,
@@ -19,11 +21,47 @@ from .repository import (
 
 
 EXPECTED_RESPONSE_SCHEMA = {
-    "status": "solved | needs_revision",
-    "summary": "Krotka ocena odpowiedzi ucznia.",
-    "comments": ["Lista konkretnych uwag."],
-    "next_step": "Jedno pytanie, wskazowka albo zadanie doprecyzowujace.",
-    "checked_at": "ISO timestamp ustawiany przez backend.",
+    "segment": "Segment review: material | mini_project | exercises | knowledge_check.",
+    "results": [
+        {
+            "item_id": "Id elementu z ReviewContext.items.",
+            "status": "solved | needs_revision",
+            "summary": "Krotka ocena odpowiedzi ucznia.",
+            "comments": ["Lista konkretnych uwag."],
+            "next_step": "Jedno pytanie, wskazowka albo zadanie doprecyzowujace.",
+        }
+    ],
+    "overall_summary": "Krotkie podsumowanie calego segmentu.",
+}
+
+
+REVIEW_RESULT_JSON_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": ["segment", "results", "overall_summary"],
+    "properties": {
+        "segment": {
+            "type": "string",
+            "enum": ["material", "mini_project", "exercises", "knowledge_check"],
+        },
+        "results": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": ["item_id", "status", "summary", "comments", "next_step"],
+                "properties": {
+                    "item_id": {"type": "string"},
+                    "status": {"type": "string", "enum": ["solved", "needs_revision"]},
+                    "summary": {"type": "string"},
+                    "comments": {"type": "array", "items": {"type": "string"}},
+                    "next_step": {"type": "string"},
+                },
+            },
+        },
+        "overall_summary": {"type": "string"},
+    },
 }
 
 
@@ -238,13 +276,25 @@ def build_knowledge_check_review_context(module_id: str) -> ReviewContext:
     )
 
 
+class ReviewAdapter(Protocol):
+    def review(self, context: ReviewContext) -> ReviewResult:
+        pass
+
+
 class MockReviewAdapter:
-    def review_item(self, item: ReviewContextItem) -> ReviewFeedback:
+    def review(self, context: ReviewContext) -> ReviewResult:
+        return ReviewResult(
+            segment=context.segment,
+            results=[self._review_item(item) for item in context.items],
+            overall_summary="Mockowy adapter sprawdzil komplet elementow w segmencie.",
+        )
+
+    def _review_item(self, item: ReviewContextItem) -> ReviewResultItem:
         normalized_answer = item.student_answer.strip()
-        checked_at = datetime.now(UTC).isoformat()
 
         if len(normalized_answer) < 12:
-            return ReviewFeedback(
+            return ReviewResultItem(
+                item_id=item.id,
                 status="needs_revision",
                 summary=f"{item.title}: odpowiedz jest jeszcze za krotka, zeby rzetelnie ocenic zrozumienie.",
                 comments=[
@@ -252,10 +302,10 @@ class MockReviewAdapter:
                     "Sama deklaracja albo pojedyncze slowo nie daje agentowi wystarczajacego kontekstu do oceny.",
                 ],
                 next_step="Rozwin odpowiedz o 2-3 zdania albo dopisz fragment kodu, ktory pokazuje Twoje rozumowanie.",
-                checked_at=checked_at,
             )
 
-        return ReviewFeedback(
+        return ReviewResultItem(
+            item_id=item.id,
             status="solved",
             summary=f"{item.title}: odpowiedz wyglada na wystarczajaca w mockowym sprawdzeniu.",
             comments=[
@@ -263,20 +313,82 @@ class MockReviewAdapter:
                 "Na tym etapie platforma sprawdza tylko minimalna kompletnosc odpowiedzi oraz zapisuje docelowy format feedbacku.",
             ],
             next_step="Przed przejsciem dalej upewnij sie, ze potrafisz wyjasnic swoje rozwiazanie prostszym przykladem.",
-            checked_at=checked_at,
         )
 
 
+class OpenAIReviewAdapter:
+    def __init__(self, api_key: str = OPENAI_API_KEY, model: str = OPENAI_MODEL) -> None:
+        if not api_key:
+            raise HTTPException(status_code=500, detail="OPENAI_API_KEY is required when REVIEW_ADAPTER=openai")
+
+        try:
+            from openai import APIError, OpenAI
+        except ImportError as error:
+            raise HTTPException(status_code=500, detail="OpenAI package is not installed") from error
+
+        self.api_error = APIError
+        self.client = OpenAI(api_key=api_key)
+        self.model = model
+
+    def review(self, context: ReviewContext) -> ReviewResult:
+        try:
+            response = self.client.responses.create(
+                model=self.model,
+                input=[
+                    {
+                        "role": "system",
+                        "content": (
+                            "Jestes dydaktycznym agentem sprawdzajacym odpowiedzi w lokalnej platformie nauki "
+                            "Pythona pod Google ADK. Oceniaj po polsku. Dawaj konkretne wskazowki, ale nie podawaj "
+                            "pelnego rozwiazania, jesli wystarczy naprowadzenie. Dla odpowiedzi blednych, niepelnych "
+                            "albo zbyt ogolnych ustaw status needs_revision."
+                        ),
+                    },
+                    {
+                        "role": "user",
+                        "content": json.dumps(context.model_dump(), ensure_ascii=False),
+                    },
+                ],
+                text={
+                    "format": {
+                        "type": "json_schema",
+                        "name": "ReviewResult",
+                        "description": "Segmentowy wynik sprawdzenia odpowiedzi ucznia.",
+                        "schema": REVIEW_RESULT_JSON_SCHEMA,
+                        "strict": True,
+                    }
+                },
+            )
+        except self.api_error as error:
+            raise HTTPException(status_code=502, detail="OpenAI review request failed") from error
+        except Exception as error:
+            raise HTTPException(status_code=502, detail="OpenAI review request failed") from error
+
+        try:
+            return ReviewResult.model_validate(json.loads(response.output_text))
+        except (json.JSONDecodeError, ValidationError, AttributeError) as error:
+            raise HTTPException(status_code=502, detail="OpenAI review response did not match ReviewResult") from error
+
+
+def create_review_adapter() -> ReviewAdapter:
+    if REVIEW_ADAPTER == "mock":
+        return MockReviewAdapter()
+
+    if REVIEW_ADAPTER == "openai":
+        return OpenAIReviewAdapter()
+
+    raise HTTPException(status_code=500, detail=f"Unsupported REVIEW_ADAPTER: {REVIEW_ADAPTER}")
+
+
 class ReviewService:
-    def __init__(self, adapter: MockReviewAdapter | None = None) -> None:
-        self.adapter = adapter or MockReviewAdapter()
+    def __init__(self, adapter: ReviewAdapter | None = None) -> None:
+        self.adapter = adapter
 
     def review_segment(self, module_id: str, segment: str) -> ProgressPayload:
         context = build_review_context(module_id, segment)
-        feedback_by_item = {
-            item.id: self.adapter.review_item(item)
-            for item in context.items
-        }
+        adapter = self.adapter or create_review_adapter()
+        review_result = adapter.review(context)
+        feedback_by_item = self._feedback_by_item(context, review_result)
         progress = load_progress()
         module_progress = get_module_progress(progress, module_id)
 
@@ -311,6 +423,32 @@ class ReviewService:
         save_progress(next_progress)
 
         return next_progress
+
+    def _feedback_by_item(self, context: ReviewContext, review_result: ReviewResult) -> dict[str, ReviewFeedback]:
+        if review_result.segment != context.segment:
+            raise HTTPException(status_code=502, detail="Review result segment does not match context")
+
+        expected_item_ids = {item.id for item in context.items}
+        result_item_ids = {item.item_id for item in review_result.results}
+
+        if len(review_result.results) != len(expected_item_ids) or result_item_ids != expected_item_ids:
+            raise HTTPException(status_code=502, detail="Review result item ids do not match context")
+
+        checked_at = datetime.now(UTC).isoformat()
+
+        try:
+            return {
+                item.item_id: ReviewFeedback(
+                    status=item.status,
+                    summary=item.summary,
+                    comments=item.comments,
+                    next_step=item.next_step,
+                    checked_at=checked_at,
+                )
+                for item in review_result.results
+            }
+        except ValidationError as error:
+            raise HTTPException(status_code=502, detail="Review result feedback fields are invalid") from error
 
     def _apply_exercise_feedback(self, module_progress: Any, feedback_by_item: dict[str, ReviewFeedback]) -> Any:
         next_feedback = dict(module_progress.exercise_feedback)
