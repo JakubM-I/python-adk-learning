@@ -227,6 +227,26 @@ Kryteria ukończenia:
 - endpoint diagnostyczny nie zwraca odpowiedzi ucznia ani pełnego promptu,
 - istnieją testy loadera promptów, wariantu profilu i lżejszego payloadu.
 
+## Etap 11: Review Operations Runbook
+
+Cel:
+- ułatwić codzienne uruchamianie platformy i ręczne testowanie prawdziwego review,
+- opisać przewidywalny flow backend + frontend + lokalny LLM,
+- zebrać diagnostykę w jednym miejscu przed dodawaniem kolejnych funkcji.
+
+Zakres:
+- krótkie instrukcje startu backendu i frontendu,
+- opis konfiguracji `review_profiles.local.json`,
+- checklisty dla mocka, LM Studio, Ollama i OpenAI,
+- ręczne scenariusze testowe dla `material`, `exercises`, `mini_project`, `knowledge_check`,
+- opis typowych problemów: zajęte porty, brak modelu, wolny model, błędny JSON, brak sekretu.
+
+Kryteria ukończenia:
+- da się uruchomić platformę z README bez szukania komend w historii rozmowy,
+- da się potwierdzić aktywny profil i prompt przez endpointy diagnostyczne,
+- manualny test review nie modyfikuje przypadkowo plików modułu,
+- wiadomo, co sprawdzić przed zgłoszeniem błędu adaptera LLM.
+
 ## Zasady pracy
 
 1. Każdy etap ma być mały i możliwy do uruchomienia.
