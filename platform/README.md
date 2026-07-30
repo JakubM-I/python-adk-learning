@@ -2,6 +2,98 @@
 
 To jest aplikacja webowa do przerabiania modułów z katalogu `modules/` w przeglądarce.
 
+## Szybki start
+
+Platforma używa stałych portów:
+
+```text
+backend:  http://127.0.0.1:8000
+frontend: http://127.0.0.1:5173
+```
+
+Przed startem sprawdź, czy nie działa poprzednia instancja:
+
+```bash
+lsof -nP -iTCP:8000 -sTCP:LISTEN
+lsof -nP -iTCP:5173 -sTCP:LISTEN
+```
+
+Terminal 1 — backend:
+
+```bash
+cd platform/backend
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install -r requirements.txt
+python -m uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
+```
+
+Terminal 2 — frontend:
+
+```bash
+cd platform/frontend
+npm install
+npm run dev
+```
+
+Otwórz aplikację:
+
+```text
+http://127.0.0.1:5173
+```
+
+Szybkie endpointy kontrolne:
+
+```text
+http://127.0.0.1:8000/api/health
+http://127.0.0.1:8000/api/modules
+http://127.0.0.1:8000/api/review-profiles
+http://127.0.0.1:8000/api/review-prompt-info/material
+```
+
+Po pracy zamknij backend i frontend, a potem sprawdź porty ponownie:
+
+```bash
+lsof -nP -iTCP:8000 -sTCP:LISTEN
+lsof -nP -iTCP:5173 -sTCP:LISTEN
+```
+
+## Szybki start z LM Studio
+
+1. Uruchom lokalny server LM Studio na:
+
+```text
+http://127.0.0.1:1234
+```
+
+2. Sprawdź dostępne modele:
+
+```bash
+curl http://127.0.0.1:1234/v1/models
+```
+
+3. Ustaw lokalny profil w ignorowanym pliku:
+
+```text
+platform/backend/review_profiles.local.json
+```
+
+Przykład:
+
+```json
+{
+  "active_profile": "lmstudio_local",
+  "profiles": {
+    "lmstudio_local": {
+      "model": "google/gemma-4-e4b",
+      "base_url": "http://127.0.0.1:1234/v1"
+    }
+  }
+}
+```
+
+Profil `lmstudio_local` dziedziczy z domyślnej konfiguracji `provider: "openai_compatible"` i `prompt_variant: "compact"`.
+
 Etap 10 zawiera:
 - backend FastAPI,
 - frontend React + Vite,
