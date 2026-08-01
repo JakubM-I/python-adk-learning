@@ -199,6 +199,33 @@ OpenRouter jest skonfigurowany jako profil OpenAI-compatible:
 REVIEW_PROFILE=openrouter_openai_latest
 ```
 
+`REVIEW_PROFILE` to zmienna środowiskowa ustawiana przy uruchamianiu backendu, a nie wpis w pliku z kluczem. Jeśli nie chcesz ustawiać jej w terminalu za każdym razem, ustaw aktywny profil w ignorowanym pliku lokalnym:
+
+```text
+platform/backend/review_profiles.local.json
+```
+
+Przykład wyboru OpenRouter i konkretnego modelu:
+
+```json
+{
+  "active_profile": "openrouter_openai_latest",
+  "profiles": {
+    "openrouter_openai_latest": {
+      "model": "openai/gpt-5-mini"
+    }
+  }
+}
+```
+
+Ten plik lokalny nadpisuje tylko podane pola. Reszta profilu, czyli `provider`, `base_url`, `api_key_env`, `api_key_file`, nagłówki i wariant promptu, zostaje odziedziczona z `platform/backend/review_profiles.json`.
+
+Jeśli chcesz jednorazowo wymusić profil bez edycji pliku lokalnego, uruchom backend z env var:
+
+```bash
+REVIEW_PROFILE=openrouter_openai_latest uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
+```
+
 Klucz API można podać jako env var:
 
 ```bash
