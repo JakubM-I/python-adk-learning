@@ -6,7 +6,7 @@ from typing import Any, Literal
 from fastapi import HTTPException
 from pydantic import BaseModel, Field
 
-from .config import REVIEW_PROFILES_FILE, REVIEW_PROFILES_LOCAL_FILE
+from .config import PROJECT_ROOT, REVIEW_PROFILES_FILE, REVIEW_PROFILES_LOCAL_FILE
 
 
 ReviewProvider = Literal["mock", "openai_compatible", "ollama"]
@@ -18,6 +18,8 @@ class ReviewProfile(BaseModel):
     model: str
     base_url: str = ""
     api_key_env: str = ""
+    api_key_file: str = ""
+    headers: dict[str, str] = Field(default_factory=dict)
     temperature: float = 0
     prompt_variant: PromptVariant = "default"
 
@@ -74,7 +76,7 @@ def review_profiles_payload(active_profile: ActiveReviewProfile | None = None) -
                 "base_url": profile.base_url,
                 "temperature": profile.temperature,
                 "prompt_variant": profile.prompt_variant,
-                "requires_api_key": bool(profile.api_key_env),
+                "requires_api_key": bool(profile.api_key_env or profile.api_key_file),
                 "active": name == selected.name,
             }
             for name, profile in sorted(selected.profiles.items())
@@ -83,16 +85,48 @@ def review_profiles_payload(active_profile: ActiveReviewProfile | None = None) -
 
 
 def require_profile_api_key(profile: ReviewProfile, env: dict[str, str] | None = None) -> str:
-    if not profile.api_key_env:
+    if not profile.api_key_env and not profile.api_key_file:
         return "local"
 
     env_values = env if env is not None else os.environ
-    api_key = env_values.get(profile.api_key_env, "")
+    api_key = env_values.get(profile.api_key_env, "").strip() if profile.api_key_env else ""
 
-    if not api_key:
-        raise HTTPException(status_code=500, detail=f"{profile.api_key_env} is required for the active review profile")
+    if api_key:
+        return api_key
 
-    return api_key
+    if profile.api_key_file:
+        key_path = _resolve_local_path(profile.api_key_file)
+
+        try:
+            file_api_key = key_path.read_text(encoding="utf-8").strip()
+        except OSError as error:
+            raise HTTPException(
+                status_code=500,
+                detail=f"{_api_key_source_label(profile)} is required for the active review profile",
+            ) from error
+
+        if file_api_key:
+            return file_api_key
+
+    raise HTTPException(
+        status_code=500,
+        detail=f"{_api_key_source_label(profile)} is required for the active review profile",
+    )
+
+
+def _api_key_source_label(profile: ReviewProfile) -> str:
+    sources = [source for source in [profile.api_key_env, profile.api_key_file] if source]
+
+    return " or ".join(sources) if sources else "API key"
+
+
+def _resolve_local_path(path_value: str) -> Path:
+    path = Path(path_value)
+
+    if path.is_absolute():
+        return path
+
+    return PROJECT_ROOT / path
 
 
 def _read_config(path: Path, required: bool) -> dict[str, Any]:

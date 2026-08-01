@@ -195,6 +195,70 @@ class ReviewServiceTest(unittest.TestCase):
         self.assertEqual(context.exception.status_code, 500)
         self.assertIn("OPENAI_API_KEY", context.exception.detail)
 
+    def test_profile_api_key_file_is_used_when_env_is_missing(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            key_file = Path(temp_dir) / "openrouter_api_key.txt"
+            key_file.write_text("sk-or-file-key\n", encoding="utf-8")
+            profile = ReviewProfile(
+                provider="openai_compatible",
+                model="~openai/gpt-latest",
+                base_url="https://openrouter.ai/api/v1",
+                api_key_env="OPENROUTER_API_KEY",
+                api_key_file=str(key_file),
+            )
+
+            api_key = require_profile_api_key(profile, env={})
+
+        self.assertEqual(api_key, "sk-or-file-key")
+
+    def test_profile_api_key_env_takes_precedence_over_file(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            key_file = Path(temp_dir) / "openrouter_api_key.txt"
+            key_file.write_text("sk-or-file-key", encoding="utf-8")
+            profile = ReviewProfile(
+                provider="openai_compatible",
+                model="~openai/gpt-latest",
+                base_url="https://openrouter.ai/api/v1",
+                api_key_env="OPENROUTER_API_KEY",
+                api_key_file=str(key_file),
+            )
+
+            api_key = require_profile_api_key(profile, env={"OPENROUTER_API_KEY": "sk-or-env-key"})
+
+        self.assertEqual(api_key, "sk-or-env-key")
+
+    def test_missing_profile_api_key_file_raises_configuration_error(self) -> None:
+        profile = ReviewProfile(
+            provider="openai_compatible",
+            model="~openai/gpt-latest",
+            base_url="https://openrouter.ai/api/v1",
+            api_key_env="OPENROUTER_API_KEY",
+            api_key_file="/tmp/missing-openrouter-key.txt",
+        )
+
+        with self.assertRaises(HTTPException) as context:
+            require_profile_api_key(profile, env={})
+
+        self.assertEqual(context.exception.status_code, 500)
+        self.assertIn("OPENROUTER_API_KEY", context.exception.detail)
+        self.assertIn("missing-openrouter-key.txt", context.exception.detail)
+
+    def test_empty_profile_api_key_file_raises_configuration_error(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            key_file = Path(temp_dir) / "openrouter_api_key.txt"
+            key_file.write_text("\n", encoding="utf-8")
+            profile = ReviewProfile(
+                provider="openai_compatible",
+                model="~openai/gpt-latest",
+                base_url="https://openrouter.ai/api/v1",
+                api_key_file=str(key_file),
+            )
+
+            with self.assertRaises(HTTPException) as context:
+                require_profile_api_key(profile, env={})
+
+        self.assertEqual(context.exception.status_code, 500)
+
     def test_active_profile_missing_api_key_raises_configuration_error(self) -> None:
         active_profile = ActiveReviewProfile(
             name="openai_gpt5",
@@ -236,6 +300,29 @@ class ReviewServiceTest(unittest.TestCase):
         self.assertEqual(request["response_format"]["type"], "json_schema")
         self.assertEqual(request["response_format"]["json_schema"]["name"], "ReviewResult")
         self.assertEqual(request["response_format"]["json_schema"]["schema"]["properties"]["results"]["type"], "array")
+
+    def test_openai_compatible_client_passes_openrouter_base_url_and_headers(self) -> None:
+        profile = ReviewProfile(
+            provider="openai_compatible",
+            model="~openai/gpt-latest",
+            base_url="https://openrouter.ai/api/v1",
+            api_key_env="OPENROUTER_API_KEY",
+            api_key_file="platform/backend/.secrets/openrouter_api_key.txt",
+            headers={
+                "HTTP-Referer": "http://127.0.0.1:5173",
+                "X-OpenRouter-Title": "Python ADK Learning Platform",
+            },
+            temperature=0,
+        )
+
+        with patch("app.review.require_profile_api_key", return_value="sk-or-test"), patch("openai.OpenAI") as openai_class:
+            OpenAICompatibleReviewClient(profile)
+
+        request = openai_class.call_args.kwargs
+        self.assertEqual(request["api_key"], "sk-or-test")
+        self.assertEqual(request["base_url"], "https://openrouter.ai/api/v1")
+        self.assertEqual(request["default_headers"]["HTTP-Referer"], "http://127.0.0.1:5173")
+        self.assertEqual(request["default_headers"]["X-OpenRouter-Title"], "Python ADK Learning Platform")
 
     def test_ollama_client_sends_format_as_json_schema(self) -> None:
         profile = ReviewProfile(
@@ -294,6 +381,17 @@ class ReviewProfilesTest(unittest.TestCase):
                             "base_url": "https://api.openai.com/v1",
                             "api_key_env": "OPENAI_API_KEY",
                         },
+                        "openrouter_openai_latest": {
+                            "provider": "openai_compatible",
+                            "model": "~openai/gpt-latest",
+                            "base_url": "https://openrouter.ai/api/v1",
+                            "api_key_env": "OPENROUTER_API_KEY",
+                            "api_key_file": "platform/backend/.secrets/openrouter_api_key.txt",
+                            "headers": {
+                                "HTTP-Referer": "http://127.0.0.1:5173",
+                                "X-OpenRouter-Title": "Python ADK Learning Platform",
+                            },
+                        },
                     },
                 }
             ),
@@ -350,9 +448,16 @@ class ReviewProfilesTest(unittest.TestCase):
         active_profile = load_review_profiles(self.default_path, self.local_path, env={"REVIEW_PROFILE": "openai_gpt5"})
         payload = review_profiles_payload(active_profile)
         openai_profile = next(profile for profile in payload["profiles"] if profile["name"] == "openai_gpt5")
+        openrouter_profile = next(profile for profile in payload["profiles"] if profile["name"] == "openrouter_openai_latest")
 
         self.assertTrue(openai_profile["requires_api_key"])
+        self.assertTrue(openrouter_profile["requires_api_key"])
         self.assertNotIn("api_key_env", openai_profile)
+        self.assertNotIn("api_key_env", openrouter_profile)
+        self.assertNotIn("api_key_file", openrouter_profile)
+        self.assertNotIn("headers", openrouter_profile)
+        self.assertNotIn("openrouter_api_key.txt", json.dumps(payload))
+        self.assertNotIn("OPENROUTER_API_KEY", json.dumps(payload))
 
 
 class ReviewProfilesEndpointTest(unittest.TestCase):

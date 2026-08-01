@@ -191,7 +191,29 @@ REVIEW_PROFILE=openai_gpt5
 OPENAI_API_KEY=sk-...
 ```
 
-Sekret jest czytany z env var wskazanego w `api_key_env`. Brak klucza, błąd API albo odpowiedź niezgodna ze schematem `ReviewResult` przerywa review bez aktualizacji `platform/data/progress.json`.
+### OpenRouter
+
+OpenRouter jest skonfigurowany jako profil OpenAI-compatible:
+
+```bash
+REVIEW_PROFILE=openrouter_openai_latest
+```
+
+Klucz API można podać jako env var:
+
+```bash
+OPENROUTER_API_KEY=sk-or-...
+```
+
+Wygodniejsza lokalna opcja to ignorowany plik z samą wartością klucza:
+
+```text
+platform/backend/.secrets/openrouter_api_key.txt
+```
+
+Utwórz katalog `.secrets`, wklej do pliku tylko klucz API i nie dodawaj składni `OPENROUTER_API_KEY=...`. Backend najpierw sprawdza env var `OPENROUTER_API_KEY`, a jeśli jej nie ma, czyta ten lokalny plik.
+
+Sekret jest czytany z env var wskazanego w `api_key_env` albo z lokalnego pliku wskazanego w `api_key_file`. Brak klucza, błąd API albo odpowiedź niezgodna ze schematem `ReviewResult` przerywa review bez aktualizacji `platform/data/progress.json`.
 
 Frontend nie przechowuje sekretów. Nie ustawiaj kluczy API w `platform/frontend/`, w `VITE_*`, w plikach Markdown, w `platform/data/progress.json` ani w `review_profiles*.json`.
 
@@ -352,8 +374,9 @@ Repo ignoruje:
 - pliki kluczy `*.pem` i `*.key`,
 - lokalny postep `platform/data/*.json`,
 - lokalny override `platform/backend/review_profiles.local.json`,
+- lokalny katalog sekretow `platform/backend/.secrets/`,
 - `node_modules/`, `dist/` i `.venv/`.
 
-Nie zapisuj sekretow w `platform/frontend/src/`, w `vite.config.js`, w Markdownach modulow, w `platform/data/progress.json` ani w plikach profili review. Frontend powinien komunikowac sie z backendem, a backend powinien trzymac integracje wymagajace sekretow po swojej stronie.
+Nie zapisuj sekretow w `platform/frontend/src/`, w `vite.config.js`, w Markdownach modulow, w `platform/data/progress.json` ani w sledzonych plikach profili review. Frontend powinien komunikowac sie z backendem, a backend powinien trzymac integracje wymagajace sekretow po swojej stronie.
 
 Pliki `platform/backend/review_prompts/*.md` sa sledzone przez git i nie powinny zawierac prywatnych odpowiedzi ucznia ani sekretow.
