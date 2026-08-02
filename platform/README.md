@@ -191,7 +191,66 @@ REVIEW_PROFILE=openai_gpt5
 OPENAI_API_KEY=sk-...
 ```
 
-Sekret jest czytany z env var wskazanego w `api_key_env`. Brak klucza, błąd API albo odpowiedź niezgodna ze schematem `ReviewResult` przerywa review bez aktualizacji `platform/data/progress.json`.
+Klucze zewnętrznych providerów działają według jednej zasady: backend najpierw sprawdza env var z profilu, a jeśli jej nie ma, czyta lokalny plik raw-key z `platform/backend/.secrets/`.
+
+Dla bezpośredniego OpenAI możesz użyć:
+
+```text
+platform/backend/.secrets/openai_api_key.txt
+```
+
+Wklej do pliku tylko sam klucz API, bez składni `OPENAI_API_KEY=...`. Env var `OPENAI_API_KEY` nadal ma pierwszeństwo, jeśli jest ustawiona przy uruchamianiu backendu.
+
+### OpenRouter
+
+OpenRouter jest skonfigurowany jako profil OpenAI-compatible:
+
+```bash
+REVIEW_PROFILE=openrouter_openai_latest
+```
+
+`REVIEW_PROFILE` to zmienna środowiskowa ustawiana przy uruchamianiu backendu, a nie wpis w pliku z kluczem. Jeśli nie chcesz ustawiać jej w terminalu za każdym razem, ustaw aktywny profil w ignorowanym pliku lokalnym:
+
+```text
+platform/backend/review_profiles.local.json
+```
+
+Przykład wyboru OpenRouter i konkretnego modelu:
+
+```json
+{
+  "active_profile": "openrouter_openai_latest",
+  "profiles": {
+    "openrouter_openai_latest": {
+      "model": "openai/gpt-5-mini"
+    }
+  }
+}
+```
+
+Ten plik lokalny nadpisuje tylko podane pola. Reszta profilu, czyli `provider`, `base_url`, `api_key_env`, `api_key_file`, nagłówki i wariant promptu, zostaje odziedziczona z `platform/backend/review_profiles.json`.
+
+Jeśli chcesz jednorazowo wymusić profil bez edycji pliku lokalnego, uruchom backend z env var:
+
+```bash
+REVIEW_PROFILE=openrouter_openai_latest uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
+```
+
+Klucz API można podać jako env var:
+
+```bash
+OPENROUTER_API_KEY=sk-or-...
+```
+
+Wygodniejsza lokalna opcja to ignorowany plik z samą wartością klucza:
+
+```text
+platform/backend/.secrets/openrouter_api_key.txt
+```
+
+Utwórz katalog `.secrets`, wklej do pliku tylko klucz API i nie dodawaj składni `OPENROUTER_API_KEY=...`. Backend najpierw sprawdza env var `OPENROUTER_API_KEY`, a jeśli jej nie ma, czyta ten lokalny plik.
+
+Sekret jest czytany z env var wskazanego w `api_key_env` albo z lokalnego pliku wskazanego w `api_key_file`. Brak klucza, błąd API albo odpowiedź niezgodna ze schematem `ReviewResult` przerywa review bez aktualizacji `platform/data/progress.json`.
 
 Frontend nie przechowuje sekretów. Nie ustawiaj kluczy API w `platform/frontend/`, w `VITE_*`, w plikach Markdown, w `platform/data/progress.json` ani w `review_profiles*.json`.
 
@@ -352,8 +411,9 @@ Repo ignoruje:
 - pliki kluczy `*.pem` i `*.key`,
 - lokalny postep `platform/data/*.json`,
 - lokalny override `platform/backend/review_profiles.local.json`,
+- lokalny katalog sekretow `platform/backend/.secrets/`,
 - `node_modules/`, `dist/` i `.venv/`.
 
-Nie zapisuj sekretow w `platform/frontend/src/`, w `vite.config.js`, w Markdownach modulow, w `platform/data/progress.json` ani w plikach profili review. Frontend powinien komunikowac sie z backendem, a backend powinien trzymac integracje wymagajace sekretow po swojej stronie.
+Nie zapisuj sekretow w `platform/frontend/src/`, w `vite.config.js`, w Markdownach modulow, w `platform/data/progress.json` ani w sledzonych plikach profili review. Frontend powinien komunikowac sie z backendem, a backend powinien trzymac integracje wymagajace sekretow po swojej stronie.
 
 Pliki `platform/backend/review_prompts/*.md` sa sledzone przez git i nie powinny zawierac prywatnych odpowiedzi ucznia ani sekretow.

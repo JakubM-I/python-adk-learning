@@ -331,6 +331,7 @@ class OpenAICompatibleReviewClient:
         self.client = OpenAI(
             api_key=api_key,
             base_url=profile.base_url or None,
+            default_headers=profile.headers or None,
         )
         self.profile = profile
 
