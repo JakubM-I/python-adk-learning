@@ -380,6 +380,7 @@ class ReviewProfilesTest(unittest.TestCase):
                             "model": "gpt-5",
                             "base_url": "https://api.openai.com/v1",
                             "api_key_env": "OPENAI_API_KEY",
+                            "api_key_file": "platform/backend/.secrets/openai_api_key.txt",
                         },
                         "openrouter_openai_latest": {
                             "provider": "openai_compatible",
@@ -453,10 +454,13 @@ class ReviewProfilesTest(unittest.TestCase):
         self.assertTrue(openai_profile["requires_api_key"])
         self.assertTrue(openrouter_profile["requires_api_key"])
         self.assertNotIn("api_key_env", openai_profile)
+        self.assertNotIn("api_key_file", openai_profile)
         self.assertNotIn("api_key_env", openrouter_profile)
         self.assertNotIn("api_key_file", openrouter_profile)
         self.assertNotIn("headers", openrouter_profile)
+        self.assertNotIn("openai_api_key.txt", json.dumps(payload))
         self.assertNotIn("openrouter_api_key.txt", json.dumps(payload))
+        self.assertNotIn("OPENAI_API_KEY", json.dumps(payload))
         self.assertNotIn("OPENROUTER_API_KEY", json.dumps(payload))
 
 

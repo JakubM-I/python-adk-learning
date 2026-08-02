@@ -191,6 +191,16 @@ REVIEW_PROFILE=openai_gpt5
 OPENAI_API_KEY=sk-...
 ```
 
+Klucze zewnętrznych providerów działają według jednej zasady: backend najpierw sprawdza env var z profilu, a jeśli jej nie ma, czyta lokalny plik raw-key z `platform/backend/.secrets/`.
+
+Dla bezpośredniego OpenAI możesz użyć:
+
+```text
+platform/backend/.secrets/openai_api_key.txt
+```
+
+Wklej do pliku tylko sam klucz API, bez składni `OPENAI_API_KEY=...`. Env var `OPENAI_API_KEY` nadal ma pierwszeństwo, jeśli jest ustawiona przy uruchamianiu backendu.
+
 ### OpenRouter
 
 OpenRouter jest skonfigurowany jako profil OpenAI-compatible:
